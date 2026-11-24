@@ -19,8 +19,16 @@ services:
         sync: false
       - key: TOSS_CLIENT_SECRET
         sync: false
-      - key: OWNER_KEY               # protects account amounts + broker sync on a public URL
-        generateValue: true
+      - key: SUPABASE_URL            # turns on sign-up / per-user data
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY   # optional, for full account deletion
+        sync: false
+      - key: OWNER_EMAILS            # your login email: the only account allowed to use Toss
+        sync: false
+      - key: DAILY_ANALYSIS_LIMIT
+        value: "30"
+      - key: DATABASE_URL            # Supabase Postgres connection string (keeps data across restarts)
+        sync: false
       - key: CORS_ORIGINS            # your Vercel URL, e.g. https://callwatch.vercel.app
         sync: false
       - key: DATA_DIR

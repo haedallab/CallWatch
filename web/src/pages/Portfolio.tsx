@@ -1,20 +1,24 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronRight, Link2, Play, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, ClipboardPaste, Link2, Play, RefreshCw, Wallet } from "lucide-react";
 import clsx from "clsx";
-import { toast } from "sonner";
-import { api, ApiError, type FeedItem, type Holding } from "../lib/api";
+import { api, type FeedItem } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useApp } from "../lib/store";
 import { C, fmtRange, fmtSurprise, krw, pct, shortMetric, statusView } from "../lib/format";
-import { Empty, ErrorState, Kpi, Modal, PageSkeleton } from "../components/ui";
+import { Empty, ErrorState, Kpi, PageSkeleton } from "../components/ui";
 
 export default function Portfolio() {
   const app = useApp();
   const nav = useNavigate();
   const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
   const sum = useQuery({ queryKey: ["summary"], queryFn: api.summary });
-  const [addOpen, setAddOpen] = useState(false);
+  const auth = useAuth();
+  const setAddOpen = app.setImportOpen;
+  // Toss is wired to the operator's own account only (Toss Open API: personal use, no redistribution).
+  const tossOk = auth.me ? auth.me.toss_available || (!auth.enabled && auth.me.mode === "live") : false;
+  const demo = auth.me?.mode === "demo";
 
   if (port.isLoading || sum.isLoading) return <PageSkeleton />;
   if (port.isError) return <ErrorState error={port.error} retry={() => port.refetch()} />;
@@ -29,8 +33,13 @@ export default function Portfolio() {
         <p>보유 종목 경영진이 실적발표에서 내놓은 전망을 SEC 공시 실적과 한 줄씩 맞춰 보고, 약속을 얼마나 지키는지 비교합니다.</p>
       </div>
       <div className="head-actions">
-        <button className="btn primary" data-tour="connect" onClick={() => app.setConnectOpen(true)}><Link2 size={16} />토스증권에서 가져오기</button>
-        <button className="btn" onClick={() => setAddOpen(true)}><Plus size={16} />직접 추가</button>
+        {tossOk ? (<>
+          <button className="btn primary" data-tour="connect" onClick={() => app.setConnectOpen(true)}><Link2 size={16} />토스증권에서 가져오기</button>
+          <button className="btn" onClick={() => setAddOpen(true)}><ClipboardPaste size={16} />직접 입력</button>
+        </>) : (<>
+          <button className="btn primary" data-tour="connect" onClick={() => setAddOpen(true)}><ClipboardPaste size={16} />보유 종목 입력</button>
+          <button className="btn ghost" onClick={() => app.setConnectOpen(true)} title="토스증권 연동이 왜 운영자 계정에만 켜져 있는지"><Link2 size={16} />토스증권 연동 안내</button>
+        </>)}
         {s && s.missing.length > 0 ? (
           <button className="btn" disabled={app.busy} onClick={() => app.analyze(s.missing)}><Play size={16} />{s.missing.length}개 종목 분석</button>
         ) : hold.length > 0 && (
@@ -44,12 +53,13 @@ export default function Portfolio() {
     return (
       <>
         {header}
-        <Empty icon={<Wallet size={40} color={C.dark} />} title="보유 종목을 불러오세요"
-          body="토스증권 계좌를 연결하면 보유종목과 비중을 그대로 가져옵니다. 계좌 없이 티커를 직접 넣거나, 오른쪽 위 ‘데모 데이터’로 먼저 둘러볼 수도 있습니다.">
-          <button className="btn primary lg" onClick={() => app.setConnectOpen(true)}><Link2 size={18} />토스증권 연결</button>
-          <button className="btn lg" onClick={() => setAddOpen(true)}>티커 직접 입력</button>
+        <Empty icon={<Wallet size={40} color={C.dark} />} title="보유 종목을 넣어 주세요"
+          body={tossOk ? "토스증권 계좌에서 보유종목과 비중을 그대로 가져오거나, 티커와 수량을 직접 입력하세요."
+            : "증권사 앱이나 엑셀에서 보유 종목 표를 복사해 붙여넣으면 미국 종목을 찾아 분석 목록을 만듭니다. 'AAPL 10'처럼 한 줄씩 적어도 됩니다."}>
+          {tossOk && <button className="btn primary lg" onClick={() => app.setConnectOpen(true)}><Link2 size={18} />토스증권에서 가져오기</button>}
+          <button className={clsx("btn lg", !tossOk && "primary")} onClick={() => setAddOpen(true)}><ClipboardPaste size={18} />보유 종목 붙여넣기</button>
+          {!demo && <button className="btn lg ghost" onClick={() => auth.switchMode(true)}>데모로 먼저 둘러보기</button>}
         </Empty>
-        {addOpen && <AddHoldings current={hold} onClose={() => setAddOpen(false)} />}
       </>
     );
   }
@@ -66,7 +76,7 @@ export default function Portfolio() {
   return (
     <>
       {header}
-      {broker && (
+      {broker && tossOk && (
         <div className="card row" style={{ justifyContent: "space-between", padding: "14px 18px" }}>
           <div className="row" style={{ gap: 28 }}>
             <div><div className="xs muted">토스증권 평가금액</div><b style={{ fontSize: 20 }} className={clsx(app.masked && "mask")}>{krw(broker.summary.market_value_krw)}</b></div>
@@ -136,7 +146,6 @@ export default function Portfolio() {
           <Heatmap feed={feed} />
         </>
       )}
-      {addOpen && <AddHoldings current={hold} onClose={() => setAddOpen(false)} />}
     </>
   );
 }
@@ -205,54 +214,3 @@ export function Heatmap({ feed }: { feed: FeedItem[] }) {
     </section>
   );
 }
-
-function AddHoldings({ current, onClose }: { current: Holding[]; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [q, setQ] = useState("");
-  const [rows, setRows] = useState<Holding[]>(current.filter((h) => h.analyzable !== false));
-  const [err, setErr] = useState<unknown>(null);
-  const found = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: q.trim().length >= 1, staleTime: 60_000 });
-  const total = rows.reduce((a, r) => a + (r.weight || 0), 0);
-  const save = async () => {
-    try {
-      await api.savePortfolio(rows.map((r) => ({ ticker: r.ticker, weight: total ? (r.weight || 0) / total : null, note: r.note || r.name })));
-      qc.invalidateQueries(); toast.success("보유 종목을 저장했습니다."); onClose();
-    } catch (e) { setErr(e); }
-  };
-  return (
-    <Modal title="종목 직접 추가" onClose={onClose} width={640} footer={<><button className="btn" onClick={onClose}>취소</button><button className="btn primary" onClick={save} disabled={!rows.length}>저장</button></>}>
-      <div className="field"><label htmlFor="q">티커 또는 회사명</label>
-        <input id="q" className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="예: NVDA, Microsoft" autoFocus /></div>
-      {q && (
-        <div className="col" style={{ gap: 4, maxHeight: 200, overflow: "auto" }}>
-          {found.isLoading && <span className="small muted">찾는 중…</span>}
-          {found.isError && <ErrorState error={found.error} />}
-          {found.data?.length === 0 && <span className="small muted">결과가 없습니다. 미국 SEC에 보고하는 상장사만 지원합니다.</span>}
-          {found.data?.map((f) => (
-            <button key={f.ticker} className="gitem" style={{ borderLeftWidth: 1 }} disabled={rows.some((r) => r.ticker === f.ticker)}
-              onClick={() => { setRows([...rows, { ticker: f.ticker, name: f.title, weight: null }]); setQ(""); }}>
-              <span className="t">{f.ticker} <span className="muted small">{f.title}</span></span><Plus size={16} />
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="col" style={{ gap: 6 }}>
-        {rows.map((r, i) => (
-          <div key={r.ticker} className="row" style={{ flexWrap: "nowrap" }}>
-            <b style={{ width: 70 }}>{r.ticker}</b><span className="small muted" style={{ flex: 1 }}>{r.name || r.note}</span>
-            <input className="input" style={{ width: 110 }} type="number" min={0} max={100} step={0.5} placeholder="비중 %" aria-label={`${r.ticker} 비중`}
-              value={r.weight ? +(r.weight * (r.weight <= 1 ? 100 : 1)).toFixed(1) : ""} onChange={(e) => { const n = [...rows]; n[i] = { ...r, weight: e.target.value ? Number(e.target.value) / 100 : null }; setRows(n); }} />
-            <button className="icon-btn" aria-label={`${r.ticker} 삭제`} onClick={() => setRows(rows.filter((x) => x.ticker !== r.ticker))}><Trash2 size={16} /></button>
-          </div>
-        ))}
-        {!rows.length && <span className="small muted">아직 추가한 종목이 없습니다.</span>}
-      </div>
-      <span className="xs muted">비중을 비워 두면 동일 비중으로 계산합니다. 합계가 100%가 아니면 비율대로 환산합니다.</span>
-      {err ? <ErrorState error={err} /> : null}
-      {err instanceof ApiError && Array.isArray((err.detail as { invalid?: unknown[] })?.invalid) && (
-        <div className="note"><AlertTriangle size={14} />{((err.detail as { invalid: { ticker: string; error: string }[] }).invalid).map((b) => `${b.ticker}: ${b.error}`).join(" / ")}</div>
-      )}
-    </Modal>
-  );
-}
-

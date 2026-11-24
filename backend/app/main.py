@@ -4,7 +4,6 @@ Run:  uvicorn app.main:app --reload --port 8000     (Swagger UI at /docs)
 """
 from __future__ import annotations
 
-import hmac
 import json
 import logging
 import queue
@@ -12,14 +11,15 @@ import threading
 import time
 from datetime import date
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from . import db
+from . import auth, db
 from .config import settings
-from .services import demo, edgar, guidance, llm, rag, scoring, toss, transcripts
+from .services import demo, edgar, importer, guidance, llm, rag, scoring, toss, transcripts
 from .services.align import STATUS_KO
 from .services.metrics import fmt, fmt_range, public_metrics
 from .services.pipeline import LiveSource, analyze
@@ -29,6 +29,7 @@ log = logging.getLogger("callwatch")
 
 TAGS = [
     {"name": "system", "description": "상태·메타 정보"},
+    {"name": "account", "description": "로그인 사용자 정보·내 데이터 삭제 (Supabase Auth)"},
     {"name": "portfolio", "description": "보유 종목과 포트폴리오 요약"},
     {"name": "broker", "description": "토스증권 Open API 연동 (조회 전용)"},
     {"name": "analysis", "description": "가이던스 추출 → 공시(XBRL)·주가 정렬"},
@@ -36,36 +37,89 @@ TAGS = [
     {"name": "ai", "description": "LLM 질의응답 (RAG, 출처 포함)"},
 ]
 
+async def request_context(
+    authorization: str | None = Header(None, include_in_schema=False),
+    x_data_mode: str | None = Header(None, description="demo | live (브라우저마다 따로 선택)"),
+    x_client_id: str | None = Header(None, include_in_schema=False),
+    x_owner_key: str | None = Header(None, include_in_schema=False),
+):
+    """Bind the caller (Supabase JWT), data mode and anonymous browser id for this request."""
+    try:
+        auth.bind(authorization, x_data_mode, x_client_id, x_owner_key)
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e)) from e
+
+
 app = FastAPI(
     title="CallWatch API",
-    version="1.0.0",
+    version="1.1.0",
     description="어닝콜·실적 보도자료의 **가이던스 발언**을 SEC EDGAR 10-Q/10-K(XBRL) 실적과 주가 반응에 "
-                "정렬(Align)해 경영진 가이던스 신뢰도를 보여주는 API. 투자 권유가 아닙니다.",
+                "정렬(Align)해 경영진 가이던스 신뢰도를 보여주는 API. 투자 권유가 아닙니다.\n\n"
+                "**사용자 구분** — `Authorization: Bearer <Supabase access token>`로 로그인 사용자를, "
+                "`X-Data-Mode: demo|live`로 데이터 모드를 구분합니다. 보유 종목·트랜스크립트는 사용자별로 저장되고, "
+                "공시 기반 분석 결과는 모든 사용자가 공유하는 캐시입니다. 토스증권 연동은 서버 소유자 계정에서만 켜집니다.",
     openapi_tags=TAGS,
+    dependencies=[Depends(request_context)],
 )
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
 
-STATE = {"demo": settings.demo_mode, "sec_ok": None, "sec_checked": 0.0}
+STATE = {"sec_ok": None, "sec_checked": 0.0}
 
 
-def source():
-    return demo.DemoSource if STATE["demo"] else LiveSource
+def is_demo() -> bool:
+    return auth.mode() == "demo"
+
+
+def source(demo_mode: bool | None = None):
+    return demo.DemoSource if (is_demo() if demo_mode is None else demo_mode) else LiveSource
 
 
 def mode() -> str:
-    return "demo" if STATE["demo"] else "live"
+    return auth.mode()
 
 
-def owner(x_owner_key: str | None = Header(None, description="OWNER_KEY가 설정된 서버에서 계좌 금액·동기화에 필요")) -> bool:
-    if not settings.owner_key:
-        return True
-    return bool(x_owner_key) and hmac.compare_digest(x_owner_key, settings.owner_key)
+def owner() -> bool:
+    return auth.is_owner()
 
 
-def require_owner(is_owner: bool = Depends(owner)) -> bool:
-    if not is_owner:
+def require_owner() -> bool:
+    if not auth.is_owner():
+        if settings.auth_enabled:
+            raise HTTPException(403, "토스증권 연동은 서비스 운영자 계정에서만 켜져 있습니다. 보유 종목은 직접 입력해 주세요.")
         raise HTTPException(401, "계좌 연동은 소유자 키(X-Owner-Key)가 필요합니다.")
     return True
+
+
+def require_user() -> str:
+    """Storage id of the caller; live data needs a signed-in user."""
+    u = auth.uid()
+    if not u:
+        raise HTTPException(401, "로그인이 필요합니다. 로그인하지 않아도 데모 데이터는 둘러볼 수 있습니다.")
+    return u
+
+
+def hide_money() -> bool:
+    """Single-user deployments share one portfolio; hide amounts from visitors there.
+    With sign-in, everyone only ever sees their own holdings."""
+    return not settings.auth_enabled and not auth.is_owner()
+
+
+def report_key(ticker: str, uid: str | None = None) -> str:
+    """Analysis results are a shared cache, except when the user added their own transcripts."""
+    t = ticker.upper()
+    u = auth.uid() if uid is None else uid
+    if u and u != "local" and db.list_transcripts(t, u):
+        return f"{mode()}:{u}:{t}"
+    return f"{mode()}:{t}"
+
+
+def find_report(ticker: str) -> tuple[str, dict | None]:
+    k = report_key(ticker)
+    r = db.get_report(k)
+    if r is None and k.count(":") == 2:
+        k = f"{mode()}:{ticker.upper()}"
+        r = db.get_report(k)
+    return k, r
 
 
 MONEY = ("value_krw", "pl_krw", "shares", "avg_price", "last_price")
@@ -90,6 +144,11 @@ class Holding(BaseModel):
     @classmethod
     def up(cls, v: str) -> str:
         return v.strip().upper()
+
+
+class PreviewIn(BaseModel):
+    text: str | None = Field(None, max_length=20_000, description="붙여넣은 표/CSV/자유 텍스트 (줄마다 한 종목)")
+    items: list[Holding] | None = Field(None, description="직접 입력한 종목 목록")
 
 
 class ModeIn(BaseModel):
@@ -124,7 +183,7 @@ class QAIn(BaseModel):
 # ---------------------------------------------------------------------------------------
 @app.get("/health", tags=["system"], summary="서버 상태")
 def health():
-    if not STATE["demo"] and time.time() - STATE["sec_checked"] > 300:
+    if not is_demo() and time.time() - STATE["sec_checked"] > 300:
         try:
             edgar.ticker_map()
             STATE["sec_ok"] = True
@@ -132,13 +191,47 @@ def health():
             STATE["sec_ok"] = False
         STATE["sec_checked"] = time.time()
     return {"status": "ok", "mode": mode(), "sec_reachable": STATE["sec_ok"], "llm": settings.llm_label,
-            "llm_enabled": llm.enabled(), "llm_stats": llm.STATS}
+            "llm_enabled": llm.enabled(), "llm_stats": llm.STATS, "auth_enabled": settings.auth_enabled,
+            "default_mode": "demo" if settings.demo_mode else "live"}
 
 
-@app.post("/api/mode", tags=["system"], summary="데모/실데이터 모드 전환")
+@app.post("/api/mode", tags=["system"], summary="(호환용) 모드 확인 — 모드는 요청마다 X-Data-Mode 헤더로 보냅니다")
 def set_mode(body: ModeIn):
-    STATE["demo"] = body.demo
-    return {"mode": mode()}
+    return {"mode": "demo" if body.demo else "live",
+            "hint": "모드는 서버 전역이 아니라 요청별입니다. 이후 요청에 X-Data-Mode 헤더를 넣어 주세요."}
+
+
+# ---------------------------------------------------------------------------------------
+# account
+# ---------------------------------------------------------------------------------------
+@app.get("/api/me", tags=["account"], summary="현재 사용자 · 권한 · 오늘 사용량")
+def me():
+    u = auth.user()
+    uid = auth.uid()
+    today = date.today().isoformat()
+    return {"auth_enabled": settings.auth_enabled, "signed_in": bool(u) and settings.auth_enabled,
+            "user": u if settings.auth_enabled else None, "uid": uid, "mode": mode(), "owner": auth.is_owner(),
+            "toss_available": auth.is_owner() and (is_demo() or toss.configured()),
+            "usage": {"today": (db.cache_get(f"usage:{uid}:{today}") or 0) if uid else 0,
+                      "limit": settings.daily_analysis_limit}}
+
+
+@app.delete("/api/me", tags=["account"], summary="내 데이터 삭제 (보유 종목·트랜스크립트·개인 분석 결과)")
+def delete_me(uid: str = Depends(require_user)):
+    db.delete_user(uid)
+    if auth.mode() == "demo" and uid.startswith("anon-"):
+        return {"deleted": True, "account_deleted": False}
+    account_deleted = False
+    u = auth.user()
+    if settings.auth_enabled and u and settings.supabase_service_key and settings.supabase_url:
+        try:
+            r = httpx.delete(f"{settings.supabase_url}/auth/v1/admin/users/{u['uid']}", timeout=10,
+                             headers={"apikey": settings.supabase_service_key,
+                                      "Authorization": f"Bearer {settings.supabase_service_key}"})
+            account_deleted = r.status_code in (200, 204)
+        except httpx.HTTPError:
+            log.warning("supabase account delete failed for %s", u["uid"])
+    return {"deleted": True, "account_deleted": account_deleted}
 
 
 @app.get("/api/meta", tags=["system"], summary="데이터 출처·판정 규칙·지표 목록")
@@ -166,7 +259,7 @@ def meta():
 @app.get("/api/search", tags=["portfolio"], summary="티커/회사명 검색")
 def search(q: str = Query(..., min_length=1, max_length=40)):
     try:
-        return demo.search(q) if STATE["demo"] else edgar.search(q)
+        return demo.search(q) if is_demo() else edgar.search(q)
     except edgar.EdgarError as e:
         _err(e, 503)
 
@@ -174,39 +267,83 @@ def search(q: str = Query(..., min_length=1, max_length=40)):
 # ---------------------------------------------------------------------------------------
 # portfolio
 # ---------------------------------------------------------------------------------------
+def _hkey(uid: str) -> str:
+    return f"holdings:{mode()}:{uid}"
+
+
 def _holdings() -> list[dict]:
-    h = db.cache_get(f"holdings:{mode()}")
-    if h is None and STATE["demo"]:
+    uid = auth.uid()
+    h = db.cache_get(_hkey(uid)) if uid else None
+    if h is None and is_demo():
         h = demo.DEMO_PORTFOLIO
     return h or []
 
 
-@app.get("/api/portfolio", tags=["portfolio"], summary="보유 종목 조회 (소유자가 아니면 금액 숨김)")
-def get_portfolio(is_owner: bool = Depends(owner)):
+@app.get("/api/portfolio", tags=["portfolio"], summary="내 보유 종목 조회")
+def get_portfolio():
     rows = _holdings()
-    if is_owner:
+    if not hide_money():
         return rows
     return [{k: v for k, v in r.items() if k not in MONEY} for r in rows]
 
 
-@app.put("/api/portfolio", tags=["portfolio"], summary="보유 종목 저장 (전체 교체)")
-def put_portfolio(items: list[Holding]):
+def _check(rows: list[dict]) -> list[dict]:
+    """Resolve each row against SEC (or demo data). Korean codes are kept but marked non-analyzable."""
+    out = []
+    for r in rows:
+        t = r["ticker"].upper()
+        kr = (r.get("market") == "KR") or bool(importer.KR_CODE.match(t))
+        row = {**r, "ticker": t, "market": "KR" if kr else "US", "ok": True, "analyzable": not kr, "error": None}
+        if kr:
+            row["error"] = "국내 종목 — 미국 SEC 공시 대상이 아니라 분석에서 제외됩니다."
+        else:
+            try:
+                info = source().resolve(t)
+                row["name"] = row.get("name") or info.get("title")
+            except edgar.EdgarError as e:
+                msg = str(e)
+                unreachable = "찾지 못했" not in msg and "데모 모드" not in msg
+                row |= {"ok": unreachable, "analyzable": unreachable, "error": msg}
+        out.append(row)
+    return out
+
+
+def _weights(rows: list[dict]) -> None:
+    given = [r for r in rows if r.get("weight")]
+    if given and len(given) == len(rows):
+        tw = sum(r["weight"] for r in rows)
+        for r in rows:
+            r["weight"] = round(r["weight"] / tw, 4)
+    elif rows:  # equal weights unless every row says otherwise
+        for r in rows:
+            r["weight"] = round(1 / len(rows), 4)
+
+
+@app.post("/api/portfolio/preview", tags=["portfolio"], summary="붙여넣기·직접 입력한 보유 종목 확인 (저장 안 함)")
+def preview_portfolio(body: PreviewIn):
+    rows, skipped = importer.parse(body.text or "") if body.text else ([], [])
+    for it in body.items or []:
+        rows.append(it.model_dump())
+    if not rows:
+        raise HTTPException(422, {"message": "종목을 찾지 못했습니다. 한 줄에 'AAPL 10' 처럼 티커와 수량을 적어 주세요.",
+                                  "skipped": skipped})
+    rows = _check(rows[:30])
+    good = [r for r in rows if r["ok"]]
+    _weights(good)
+    return {"rows": rows, "skipped": skipped, "n_ok": len(good), "n_analyzable": sum(r["analyzable"] for r in good)}
+
+
+@app.put("/api/portfolio", tags=["portfolio"], summary="내 보유 종목 저장 (전체 교체)")
+def put_portfolio(items: list[Holding], uid: str = Depends(require_user)):
     if len(items) > 30:
         _err(ValueError("최대 30종목까지 등록할 수 있습니다."))
-    bad = []
-    for it in items:
-        try:
-            source().resolve(it.ticker)
-        except edgar.EdgarError as e:
-            bad.append({"ticker": it.ticker, "error": str(e)})
+    rows = _check([it.model_dump() for it in items])
+    bad = [{"ticker": r["ticker"], "error": r["error"]} for r in rows if not r["ok"]]
     if bad:
         raise HTTPException(status_code=422, detail={"message": "확인되지 않는 티커가 있습니다.", "invalid": bad})
-    rows = [it.model_dump() | {"analyzable": True, "source": "manual"} for it in items]
-    tw = sum(r["weight"] or 0 for r in rows)
-    if not tw:  # equal weight when not given
-        for r in rows:
-            r["weight"] = round(1 / len(rows), 4) if rows else 0
-    db.cache_set(f"holdings:{mode()}", rows)
+    rows = [{k: v for k, v in r.items() if k not in ("ok", "error")} | {"source": "manual"} for r in rows]
+    _weights(rows)
+    db.cache_set(_hkey(uid), rows)
     return rows
 
 
@@ -217,7 +354,7 @@ def portfolio_summary():
     for h in hold:
         if not h.get("analyzable", True):
             continue
-        r = db.get_report(f"{mode()}:{h['ticker']}")
+        r = find_report(h["ticker"])[1]
         (reports.append(r) if r else missing.append(h["ticker"]))
     summary = scoring.portfolio(reports, {h["ticker"]: h.get("weight") or 0 for h in hold})
     feed = []
@@ -238,7 +375,7 @@ def portfolio_summary():
                  "reason": "미국 SEC 공시 대상이 아님 (국내 종목은 DART 연동 확장 예정)"}
                 for h in hold if not h.get("analyzable", True)]
     return {**summary, "mode": mode(), "missing": missing, "guidance_feed": feed, "excluded": excluded,
-            "broker": db.cache_get(f"broker:last:{mode()}"),
+            "broker": db.cache_get(f"broker:last:{mode()}:{auth.uid()}") if auth.uid() else None,
             "upcoming": sorted(upcoming, key=lambda x: x["next_release_est"])}
 
 
@@ -246,10 +383,16 @@ def portfolio_summary():
 # broker: Toss Securities (read-only)
 # ---------------------------------------------------------------------------------------
 @app.get("/api/broker/status", tags=["broker"], summary="토스증권 연동 상태")
-def broker_status(is_owner: bool = Depends(owner)):
+def broker_status():
+    is_owner, uid = auth.is_owner(), auth.uid()
     base = {"provider": "toss", "mode": mode(), "configured": toss.configured(), "owner": is_owner,
-            "owner_key_required": bool(settings.owner_key), "last_sync": db.cache_get(f"broker:last:{mode()}")}
-    if STATE["demo"]:
+            "owner_only": settings.auth_enabled, "owner_key_required": bool(settings.owner_key) and not settings.auth_enabled,
+            "last_sync": db.cache_get(f"broker:last:{mode()}:{uid}") if uid else None}
+    if settings.auth_enabled and not is_owner:
+        return base | {"connected": None, "available": False,
+                       "error": "토스증권 연동은 서비스 운영자 계정에서만 켜져 있습니다.",
+                       "hint": "토스증권 Open API는 본인 계좌의 본인 이용만 허용합니다. 보유 종목은 직접 입력하거나 붙여넣어 주세요."}
+    if is_demo():
         return base | {"connected": True, "demo": True,
                        "accounts": [{"accountSeq": 1, "accountNo": "123•••••901", "accountType": "BROKERAGE"}]}
     if not toss.configured():
@@ -264,9 +407,9 @@ def broker_status(is_owner: bool = Depends(owner)):
 
 
 @app.post("/api/broker/toss/sync", tags=["broker"], summary="토스증권 보유종목을 포트폴리오로 가져오기")
-def broker_sync(body: SyncIn, _: bool = Depends(require_owner)):
+def broker_sync(body: SyncIn, _: bool = Depends(require_owner), uid: str = Depends(require_user)):
     try:
-        if STATE["demo"]:
+        if is_demo():
             raw, fx, seq = toss.demo_holdings(), 1420.0, 1
         else:
             accts = toss.accounts()
@@ -286,26 +429,43 @@ def broker_sync(body: SyncIn, _: bool = Depends(require_owner)):
             except edgar.EdgarError as e:
                 ok = "찾지 못했" not in str(e) and "데모 모드" not in str(e)  # keep if SEC merely unreachable
         rows.append(r | {"analyzable": ok, "source": "toss", "note": r["name"][:40]})
-    db.cache_set(f"holdings:{mode()}", rows)
+    db.cache_set(_hkey(uid), rows)
     last = {"at": time.strftime("%Y-%m-%d %H:%M"), "account_seq": seq, "n": len(rows),
             "n_analyzable": sum(r["analyzable"] for r in rows), "summary": norm["summary"], "usd_krw": fx}
-    db.cache_set(f"broker:last:{mode()}", last)
+    db.cache_set(f"broker:last:{mode()}:{uid}", last)
     return {"holdings": rows, **last}
 
 
 # ---------------------------------------------------------------------------------------
 # analysis
 # ---------------------------------------------------------------------------------------
+def _charge() -> str | None:
+    """Live analyses hit SEC and the LLM; require sign-in and count them per user per day."""
+    uid = auth.uid()
+    if is_demo():
+        return uid
+    if settings.auth_enabled:
+        if not uid:
+            raise HTTPException(401, "실데이터 분석은 로그인 후 이용할 수 있습니다. 데모 모드는 로그인 없이 쓸 수 있습니다.")
+        n = db.bump_usage(uid, date.today().isoformat())
+        if n > settings.daily_analysis_limit and not auth.is_owner():
+            raise HTTPException(429, f"오늘 실데이터 분석 한도({settings.daily_analysis_limit}회)를 모두 썼습니다. "
+                                     "이미 분석된 종목은 계속 볼 수 있습니다.")
+    return uid
+
+
 @app.post("/api/analyze/{ticker}", tags=["analysis"], summary="종목 분석 실행 (가이던스 추출·정렬·이벤트스터디)")
 def run_analysis(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bool = True,
                  refresh: bool = False, evidence: bool = True):
-    key = f"{mode()}:{ticker.upper()}"
+    key = report_key(ticker)
     if not refresh:
         cached = db.get_report(key)
         if cached and cached.get("n_events_requested") == events:
             return cached
+    uid = _charge()
     try:
-        rep = analyze(ticker, n_events=events, use_llm=use_llm, with_evidence=evidence, src=source())
+        rep = analyze(ticker, n_events=events, use_llm=use_llm, with_evidence=evidence, src=source(),
+                      user_id=uid, store_key=key)
     except edgar.EdgarError as e:
         msg = str(e)
         _err(e, 404 if "찾지 못했" in msg or "데모 모드" in msg else 503)
@@ -318,12 +478,14 @@ def run_analysis(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bool
          summary="분석 실행 + 단계별 진행 상황 스트리밍 (Server-Sent Events)")
 def analyze_stream(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bool = True):
     q: queue.Queue = queue.Queue()
-    key = f"{mode()}:{ticker.upper()}"
+    key = report_key(ticker)
     src = source()
+    uid = _charge()  # resolve before the worker thread: context vars do not cross threads
 
     def work():
         try:
-            rep = analyze(ticker, n_events=events, use_llm=use_llm, src=src, progress=lambda e: q.put(("progress", e)))
+            rep = analyze(ticker, n_events=events, use_llm=use_llm, src=src, progress=lambda e: q.put(("progress", e)),
+                          user_id=uid, store_key=key)
             rep["n_events_requested"] = events
             db.save_report(key, rep)
             q.put(("done", {"ticker": rep["ticker"], "score": rep["score"], "n_guidance": len(rep["guidance"]),
@@ -350,7 +512,7 @@ def analyze_stream(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bo
 
 @app.get("/api/report/{ticker}", tags=["analysis"], summary="저장된 분석 결과 조회")
 def get_report(ticker: str):
-    r = db.get_report(f"{mode()}:{ticker.upper()}")
+    r = find_report(ticker)[1]
     if not r:
         raise HTTPException(404, "아직 분석되지 않은 종목입니다. POST /api/analyze/{ticker} 를 먼저 호출하세요.")
     return r
@@ -388,36 +550,39 @@ def document(url: str):
 # transcripts
 # ---------------------------------------------------------------------------------------
 @app.post("/api/transcripts", tags=["transcripts"], summary="어닝콜 트랜스크립트 저장 + 가이던스 미리보기")
-def add_transcript(body: TranscriptIn):
+def add_transcript(body: TranscriptIn, uid: str = Depends(require_user)):
     try:
         source().resolve(body.ticker)
     except edgar.EdgarError as e:
         _err(e, 404)
-    tid = db.save_transcript(body.ticker, body.call_date.isoformat(), "upload", body.text)
+    tid = db.save_transcript(body.ticker, body.call_date.isoformat(), "upload", body.text, uid)
     items = guidance.extract(body.text, ticker=body.ticker, event_date=body.call_date.isoformat(),
                              source="어닝콜 트랜스크립트", use_llm=True)
     return {"id": tid, "n_guidance": len(items), "items": items,
-            "hint": "재분석(refresh=true)하면 트랜스크립트 가이던스가 실적과 정렬됩니다."}
+            "hint": "재분석(refresh=true)하면 트랜스크립트 가이던스가 실적과 정렬됩니다. "
+                    "올린 원문은 나에게만 보이며, 이 종목의 분석 결과도 내 전용으로 저장됩니다."}
 
 
-@app.get("/api/transcripts/{ticker}", tags=["transcripts"], summary="저장된 트랜스크립트 목록")
+@app.get("/api/transcripts/{ticker}", tags=["transcripts"], summary="트랜스크립트 목록 (공용 샘플 + 내가 올린 원문)")
 def list_transcripts(ticker: str, include_text: bool = False):
-    rows = transcripts.all_transcripts(ticker) if not STATE["demo"] else demo.DemoSource.transcripts(ticker)
+    uid = auth.uid()
+    rows = demo.DemoSource.transcripts(ticker, uid) if is_demo() else transcripts.all_transcripts(ticker, uid)
     return [{**{k: r[k] for k in ("id", "ticker", "call_date", "source")}, "chars": len(r["text"]),
              "preview": r["text"][:300]} | ({"text": r["text"]} if include_text else {}) for r in rows]
 
 
-@app.delete("/api/transcripts/{tid}", tags=["transcripts"], summary="트랜스크립트 삭제")
-def delete_transcript(tid: str):
-    db.delete_transcript(tid)
+@app.delete("/api/transcripts/{tid}", tags=["transcripts"], summary="내가 올린 트랜스크립트 삭제")
+def delete_transcript(tid: str, uid: str = Depends(require_user)):
+    db.delete_transcript(tid, uid)
     return {"deleted": tid}
 
 
 @app.get("/api/transcripts/{ticker}/fetch", tags=["transcripts"], summary="API Ninjas에서 트랜스크립트 가져오기 (선택)")
-def fetch_transcript(ticker: str, year: int = Query(..., ge=2010, le=2100), quarter: int = Query(..., ge=1, le=4)):
+def fetch_transcript(ticker: str, year: int = Query(..., ge=2010, le=2100), quarter: int = Query(..., ge=1, le=4),
+                     uid: str = Depends(require_user)):
     if not settings.api_ninjas_key:
         raise HTTPException(400, "API_NINJAS_KEY 가 설정되지 않았습니다. 원문을 직접 붙여넣어 주세요.")
-    r = transcripts.fetch_api_ninjas(ticker, year, quarter)
+    r = transcripts.fetch_api_ninjas(ticker, year, quarter, uid)
     if not r:
         raise HTTPException(404, "해당 분기 트랜스크립트를 찾지 못했습니다.")
     return {k: r[k] for k in ("ticker", "call_date", "source")} | {"chars": len(r["text"])}
@@ -429,10 +594,11 @@ def fetch_transcript(ticker: str, year: int = Query(..., ge=2010, le=2100), quar
 @app.post("/api/qa", tags=["ai"], summary="종목 질의응답 (해당 종목 문서만 검색, 출처 표시)")
 def qa(body: QAIn):
     t = body.ticker.upper()
-    corpus = db.cache_get(f"corpus:{mode()}:{t}") or []
+    key, rep = find_report(t)
+    corpus = db.cache_get(f"corpus:{key.lower()}") or []
     if not corpus:
         raise HTTPException(404, "먼저 이 종목을 분석해 주세요 (문서 색인이 없습니다).")
-    rep = db.get_report(f"{mode()}:{t}") or {}
+    rep = rep or {}
     # structured facts as an extra, always-relevant context
     facts = []
     gs = [g for g in rep.get("guidance", []) if g.get("status") in ("above", "within", "below", "pending")]

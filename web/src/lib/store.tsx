@@ -15,6 +15,7 @@ interface Ctx {
   tour: boolean; setTour: (v: boolean) => void;
   paletteOpen: boolean; setPaletteOpen: (v: boolean) => void;
   connectOpen: boolean; setConnectOpen: (v: boolean) => void;
+  importOpen: boolean; setImportOpen: (v: boolean) => void;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -36,6 +37,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tour, setTour] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const running = useRef(false);
 
   const patch = (t: string, p: Partial<Job>) => setJobs((j) => ({ ...j, [t]: { ...j[t], ...p } }));
@@ -50,19 +52,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (running.current) return;
     running.current = true;
     let ok = 0;
+    let stop: string | null = null;
     for (const t of tickers) {
+      if (stop) { patch(t, { state: "error", message: stop, error: stop }); continue; }
       patch(t, { state: "running", message: "시작", pct: 0.01 });
       await new Promise<void>((resolve) => {
         analyzeStream(t, { events, useLlm }, {
           progress: (e) => setJobs((j) => ({ ...j, [t]: { ...j[t], pct: e.pct, message: e.message, log: [...(j[t]?.log || []), e.message].slice(-30) } })),
           done: (d) => { ok += 1; patch(t, { state: "done", pct: 1, message: `가이던스 ${d.n_guidance}건 · ${d.elapsed_sec}초`, result: d }); qc.invalidateQueries({ queryKey: ["report", t] }); resolve(); },
-          error: (msg) => { patch(t, { state: "error", message: msg, error: msg }); resolve(); },
+          error: (msg, status) => {
+            patch(t, { state: "error", message: msg, error: msg });
+            if (status === 401 || status === 429) stop = msg;  // same answer for the rest of the queue
+            resolve();
+          },
         });
       });
     }
     running.current = false;
     qc.invalidateQueries({ queryKey: ["summary"] });
-    if (ok === tickers.length) toast.success(`${ok}개 종목 분석을 마쳤습니다.`);
+    qc.invalidateQueries({ queryKey: ["me"] });
+    if (stop) toast.error(stop);
+    else if (ok === tickers.length) toast.success(`${ok}개 종목 분석을 마쳤습니다.`);
     else toast.error(`${tickers.length - ok}개 종목 분석에 실패했습니다.`, { description: "진행 패널에서 원인을 확인하세요." });
   }, [events, useLlm, qc]);
 
@@ -70,7 +80,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({
     masked, setMasked, useLlm, setUseLlm, events, setEvents, jobs, busy, analyze,
     clearJobs: () => setJobs({}), tour, setTour, paletteOpen, setPaletteOpen, connectOpen, setConnectOpen,
-  }), [masked, setMasked, useLlm, setUseLlm, events, setEvents, jobs, busy, analyze, tour, paletteOpen, connectOpen]);
+    importOpen, setImportOpen,
+  }), [masked, setMasked, useLlm, setUseLlm, events, setEvents, jobs, busy, analyze, tour, paletteOpen, connectOpen, importOpen]);
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }
 

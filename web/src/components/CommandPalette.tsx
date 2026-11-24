@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Eye, FlaskConical, LineChart, Link2, Play, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardPaste, Eye, FlaskConical, LineChart, Link2, Play, Sparkles } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../lib/store";
 import { Overlay } from "./ui";
@@ -37,6 +37,7 @@ export default function CommandPalette({ onClose, switchMode, mode }: { onClose:
             </Command.Group>
           )}
           <Command.Group heading="할 일">
+            <Command.Item onSelect={() => go(() => app.setImportOpen(true))}><ClipboardPaste size={16} />보유 종목 붙여넣기 · 편집</Command.Item>
             <Command.Item onSelect={() => go(() => app.setConnectOpen(true))}><Link2 size={16} />토스증권 보유종목 가져오기</Command.Item>
             <Command.Item onSelect={() => go(() => app.analyze(tickers.map((t) => t.ticker)))} disabled={!tickers.length}><Play size={16} />보유 종목 전체 분석</Command.Item>
             <Command.Item onSelect={() => go(() => switchMode(mode !== "demo"))}><FlaskConical size={16} />{mode === "demo" ? "실데이터로 전환" : "데모 데이터로 전환"}</Command.Item>
@@ -44,7 +45,7 @@ export default function CommandPalette({ onClose, switchMode, mode }: { onClose:
             <Command.Item onSelect={() => go(() => app.setTour(true))}><Sparkles size={16} />화면 둘러보기 시작</Command.Item>
           </Command.Group>
           <Command.Group heading="메뉴">
-            {[["/", "내 포트폴리오"], ["/company", "종목 상세 분석"], ["/transcript", "어닝콜 원문 넣기"], ["/ask", "AI에게 묻기"], ["/method", "데이터·판정 방법"]].map(([to, label]) => (
+            {[["/", "내 포트폴리오"], ["/company", "종목 상세 분석"], ["/transcript", "어닝콜 원문 넣기"], ["/ask", "AI에게 묻기"], ["/method", "데이터·판정 방법"], ["/account", "내 계정 · 데이터 관리"]].map(([to, label]) => (
               <Command.Item key={to} onSelect={() => go(() => nav(to))}><ArrowRight size={16} />{label}</Command.Item>
             ))}
           </Command.Group>

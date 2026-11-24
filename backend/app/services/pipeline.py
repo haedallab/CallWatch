@@ -47,7 +47,7 @@ def _evidence(src, filing: dict, item: dict) -> list[dict]:
 
 
 def analyze(ticker: str, n_events: int = 8, use_llm: bool = True, with_evidence: bool = True,
-            src=None, progress=None) -> dict:
+            src=None, progress=None, user_id: str | None = None, store_key: str | None = None) -> dict:
     src = src or LiveSource
     t0 = time.time()
 
@@ -93,7 +93,7 @@ def analyze(ticker: str, n_events: int = 8, use_llm: bool = True, with_evidence:
             ev["n_guidance"] = len(found)
             corpus += [{"text": c, "source": "8-K 보도자료", "date": ev["date"], "url": pr["url"]}
                        for c in rag.chunk_text(pr["text"])[:60]]
-    trs = src.transcripts(info["ticker"])
+    trs = src.transcripts(info["ticker"], user_id)
     if trs:
         step("extract", f"어닝콜 트랜스크립트 {len(trs)}건 읽기", 0.62)
     for tr in trs:
@@ -183,8 +183,10 @@ def analyze(ticker: str, n_events: int = 8, use_llm: bool = True, with_evidence:
         "score": scoring.credibility(items), "market_response": scoring.market_response(items),
         "actuals": actuals, "prices": price_rows, "warnings": warnings,
     }
-    db.save_report(f"{src.mode}:{info['ticker']}", report)
-    db.cache_set(f"corpus:{src.mode}:{info['ticker']}", corpus)
+    key = store_key or f"{src.mode}:{info['ticker']}"
+    report["personal"] = key.count(":") >= 2  # built with this user's own transcripts
+    db.save_report(key, report)
+    db.cache_set(f"corpus:{key.lower()}", corpus)
     return report
 
 

@@ -1,3 +1,5 @@
+import { accessToken, clientId, dataMode } from "./session";
+
 export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 export type Status = "above" | "within" | "below" | "pending" | "unverifiable";
@@ -46,9 +48,16 @@ export interface Summary {
 export interface BrokerSync { at: string; account_seq: number; n: number; n_analyzable: number; usd_krw: number | null; summary: { market_value_krw: number; purchase_krw: number | null; pl_krw: number | null; pl_rate: number | null; daily_rate: number | null } }
 export interface BrokerStatus {
   provider: "toss"; mode: string; configured: boolean; owner: boolean; owner_key_required: boolean; connected: boolean | null;
+  owner_only?: boolean; available?: boolean;
   demo?: boolean; accounts?: { accountSeq: number; accountNo: string; accountType: string }[]; error?: string; hint?: string; code?: string; last_sync: BrokerSync | null;
 }
-export interface Health { status: string; mode: "live" | "demo"; sec_reachable: boolean | null; llm: string; llm_enabled: boolean }
+export interface Health { status: string; mode: "live" | "demo"; sec_reachable: boolean | null; llm: string; llm_enabled: boolean; auth_enabled?: boolean; default_mode?: "live" | "demo" }
+export interface Me {
+  auth_enabled: boolean; signed_in: boolean; user: { uid: string; email: string } | null; uid: string | null;
+  mode: "live" | "demo"; owner: boolean; toss_available: boolean; usage: { today: number; limit: number };
+}
+export interface PreviewRow { ticker: string; name?: string | null; market: "US" | "KR"; shares?: number | null; weight?: number | null; ok: boolean; analyzable: boolean; error: string | null }
+export interface Preview { rows: PreviewRow[]; skipped: { line: number | null; text: string; reason: string }[]; n_ok: number; n_analyzable: number }
 export interface Citation { text: string; source: string; date?: string; url?: string; score?: number }
 export interface QAResponse { answer: string; citations: Citation[]; mode: "llm" | "extractive" | "empty"; latency_ms: number }
 
@@ -65,12 +74,22 @@ export const ownerKey = {
   set: (v: string) => (v ? sessionStorage.setItem(OWNER_KEY, v) : sessionStorage.removeItem(OWNER_KEY)),
 };
 
+/** Who is calling (Supabase token), which data mode this browser views, anonymous browser id. */
+export async function contextHeaders(): Promise<Record<string, string>> {
+  const h: Record<string, string> = { "X-Client-Id": clientId };
+  const m = dataMode.get();
+  if (m) h["X-Data-Mode"] = m;
+  const t = await accessToken();
+  if (t) h.Authorization = `Bearer ${t}`;
+  if (ownerKey.get()) h["X-Owner-Key"] = ownerKey.get();
+  return h;
+}
+
 export async function request<T>(method: string, path: string, opts: { body?: unknown; params?: Record<string, unknown> } = {}): Promise<T> {
   const url = new URL(API_URL + path);
   Object.entries(opts.params || {}).forEach(([k, v]) => v !== undefined && v !== null && url.searchParams.set(k, String(v)));
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...(await contextHeaders()) };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-  if (ownerKey.get()) headers["X-Owner-Key"] = ownerKey.get();
   let r: Response;
   try {
     r = await fetch(url, { method, headers, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined });
@@ -89,7 +108,9 @@ export async function request<T>(method: string, path: string, opts: { body?: un
 
 export const api = {
   health: () => request<Health>("GET", "/health"),
-  setMode: (demo: boolean) => request("POST", "/api/mode", { body: { demo } }),
+  me: () => request<Me>("GET", "/api/me"),
+  deleteMe: () => request<{ deleted: boolean; account_deleted: boolean }>("DELETE", "/api/me"),
+  previewPortfolio: (body: { text?: string; items?: Holding[] }) => request<Preview>("POST", "/api/portfolio/preview", { body }),
   meta: () => request<{ llm: string; mode: string; sources: { name: string; use: string; url: string }[]; disclaimer: string }>("GET", "/api/meta"),
   search: (q: string) => request<{ ticker: string; title: string; cik: string }[]>("GET", "/api/search", { params: { q } }),
   portfolio: () => request<Holding[]>("GET", "/api/portfolio"),
@@ -112,21 +133,51 @@ export const api = {
 export interface ProgressEvent { step: string; message: string; pct: number }
 export interface DoneEvent { ticker: string; score: Score; n_guidance: number; elapsed_sec: number; warnings: string[] }
 
-/** Run an analysis and receive step-by-step progress over Server-Sent Events. */
+/** Run an analysis and receive step-by-step progress over Server-Sent Events.
+ *  Uses fetch (not EventSource) so the sign-in token and data-mode headers travel with it. */
 export function analyzeStream(ticker: string, opts: { events?: number; useLlm?: boolean },
-  on: { progress: (e: ProgressEvent) => void; done: (e: DoneEvent) => void; error: (msg: string) => void }) {
+  on: { progress: (e: ProgressEvent) => void; done: (e: DoneEvent) => void; error: (msg: string, status?: number) => void }) {
   const url = new URL(`${API_URL}/api/analyze/${ticker}/stream`);
   url.searchParams.set("events", String(opts.events ?? 8));
   url.searchParams.set("use_llm", String(opts.useLlm ?? true));
-  const es = new EventSource(url);
+  const ctl = new AbortController();
   let finished = false;
-  es.addEventListener("progress", (e) => on.progress(JSON.parse((e as MessageEvent).data)));
-  es.addEventListener("done", (e) => { finished = true; es.close(); on.done(JSON.parse((e as MessageEvent).data)); });
-  es.addEventListener("error", (e) => {
-    const data = (e as MessageEvent).data;
-    if (finished) return;
-    finished = true; es.close();
-    on.error(data ? JSON.parse(data).message : "분석 서버와의 연결이 끊어졌습니다. 다시 시도해 주세요.");
-  });
-  return () => { finished = true; es.close(); };
+  const fail = (msg: string, status?: number) => { if (!finished) { finished = true; on.error(msg, status); } };
+  (async () => {
+    let r: Response;
+    try {
+      r = await fetch(url, { headers: { Accept: "text/event-stream", ...(await contextHeaders()) }, signal: ctl.signal });
+    } catch {
+      return fail("분석 서버에 연결하지 못했습니다. 백엔드가 깨어나는 중이면 30초 뒤 다시 시도하세요.");
+    }
+    if (!r.ok || !r.body) {
+      let msg = `분석을 시작하지 못했습니다 (${r.status})`;
+      try { const d = (await r.json()).detail; msg = typeof d === "string" ? d : d?.message || msg; } catch { /* not json */ }
+      return fail(msg, r.status);
+    }
+    const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += value;
+        let i: number;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, i); buf = buf.slice(i + 2);
+          let ev = "message"; const data: string[] = [];
+          block.split("\n").forEach((l) => { if (l.startsWith("event:")) ev = l.slice(6).trim(); else if (l.startsWith("data:")) data.push(l.slice(5).trim()); });
+          if (!data.length) continue;
+          const payload = JSON.parse(data.join("\n"));
+          if (ev === "progress") on.progress(payload);
+          else if (ev === "done") { finished = true; on.done(payload); }
+          else if (ev === "error") fail(payload.message);
+        }
+      }
+    } catch {
+      /* aborted or dropped */
+    }
+    fail("분석 서버와의 연결이 끊어졌습니다. 다시 시도해 주세요.");
+  })();
+  return () => { finished = true; ctl.abort(); };
 }

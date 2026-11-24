@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ExternalLink, Link2, Loader2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ClipboardPaste, ExternalLink, Link2, Loader2, Lock, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError, ownerKey, type Holding } from "../lib/api";
 import { useApp } from "../lib/store";
@@ -24,6 +24,28 @@ export default function ConnectToss({ onClose }: { onClose: () => void }) {
   const rows: Holding[] = sync.data?.holdings || [];
   const us = rows.filter((r) => r.analyzable);
   const ready = !!s && s.connected === true;
+  const ownerOnly = s?.available === false;
+  const toImport = () => { onClose(); app.setImportOpen(true); };
+
+  if (ownerOnly) {
+    return (
+      <Modal title={<span className="row" style={{ gap: 8 }}><Lock size={19} color="var(--dark)" />토스증권 연동은 운영자 계정 전용입니다</span>} onClose={onClose} width={620}
+        footer={<><button className="btn" onClick={onClose}>닫기</button><button className="btn primary" onClick={toImport}><ClipboardPaste size={16} />보유 종목 붙여넣기</button></>}>
+        <p style={{ margin: 0 }}>CallWatch 서버의 토스증권 연결은 <b>서비스 운영자 본인 계좌</b>에만 켜 두었습니다. 다른 사용자의 계좌는 연결하지 않습니다.</p>
+        <div className="card col" style={{ gap: 8 }}>
+          <b className="small">왜 내 계좌는 연결할 수 없나요?</b>
+          <ul className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
+            <li>토스증권 Open API 키는 <b>계좌 주인 한 사람</b>에게 발급되고, 받은 정보는 본인의 투자 목적으로만 쓰도록 되어 있습니다.</li>
+            <li>다른 서비스가 여러 사람의 키를 받아 대신 조회하면 이 조건을 벗어나고, 키가 유출되면 계좌가 위험해집니다.</li>
+            <li>여러 사용자의 계좌를 모아 보여 주는 일은 마이데이터 등 별도 인가가 필요한 영역입니다.</li>
+          </ul>
+        </div>
+        <div className="banner"><ClipboardPaste size={18} style={{ flex: "none", marginTop: 2 }} color="var(--dark)" />
+          <div><b>대신 보유 종목 표를 붙여넣으세요.</b> 토스증권 앱의 ‘내 주식’ 화면이나 엑셀에서 복사해 붙여넣으면, 미국 종목을 찾아 분석 목록을 만들어 줍니다. 계좌번호나 비밀번호는 필요 없습니다.</div></div>
+        <a className="xs" href="https://developers.tossinvest.com" target="_blank" rel="noreferrer">토스증권 Open API 안내 <ExternalLink size={11} /></a>
+      </Modal>
+    );
+  }
 
   const footer = step === 0 ? (
     <><button className="btn" onClick={onClose}>닫기</button>

@@ -50,8 +50,16 @@ class Settings:
     toss_client_id: str = os.getenv("TOSS_CLIENT_ID", "")
     toss_client_secret: str = os.getenv("TOSS_CLIENT_SECRET", "")
     toss_account_seq: str = os.getenv("TOSS_ACCOUNT_SEQ", "")
-    # Owner key: when set, broker sync and money amounts require header X-Owner-Key
+    # Owner key: when set, broker sync and money amounts require header X-Owner-Key (single-user deployments)
     owner_key: str = os.getenv("OWNER_KEY", "")
+
+    # Multi-user sign-in (Supabase Auth). Either the project URL (JWKS, asymmetric keys) or the legacy JWT secret.
+    supabase_url: str = os.getenv("SUPABASE_URL", "").rstrip("/")
+    supabase_jwt_secret: str = os.getenv("SUPABASE_JWT_SECRET", "")
+    supabase_service_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    # Accounts allowed to use the server-side Toss connection (comma separated e-mails)
+    owner_emails: list[str] = field(default_factory=lambda: [e.strip().lower() for e in os.getenv("OWNER_EMAILS", "").split(",") if e.strip()])
+    daily_analysis_limit: int = int(os.getenv("DAILY_ANALYSIS_LIMIT", "30"))
 
     demo_mode: bool = _bool("DEMO_MODE", False)
     cache_ttl_hours: int = int(os.getenv("CACHE_TTL_HOURS", "24"))
@@ -59,6 +67,10 @@ class Settings:
     cors_origins: list[str] = field(
         default_factory=lambda: [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
     )
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.supabase_url or self.supabase_jwt_secret)
 
     @property
     def llm_enabled(self) -> bool:

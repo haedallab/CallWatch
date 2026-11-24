@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const STEPS = [
-  { sel: '[data-tour="connect"]', path: "/", title: "1. 내 계좌 연결", body: "토스증권 오픈API로 보유종목과 비중을 그대로 가져옵니다. 조회 전용이라 주문은 나가지 않습니다." },
+  { sel: '[data-tour="connect"]', path: "/", title: "1. 보유 종목 넣기", body: "증권사 앱이나 엑셀의 보유 종목 표를 붙여넣으면 미국 종목을 찾아 분석 목록을 만듭니다. 운영자 계정은 토스증권 오픈API(조회 전용)로 바로 가져옵니다." },
   { sel: '[data-tour="score"]', path: "/", title: "2. 경영진 신뢰도", body: "보유 종목 경영진이 실적발표에서 한 약속을 얼마나 지켰는지 비중 가중 점수로 보여줍니다." },
   { sel: '[data-tour="heat"]', path: "/", title: "3. 분기별 이행 지도", body: "칸을 누르면 그 분기의 가이던스와 실제 실적 비교로 바로 이동합니다." },
   { sel: '[data-tour="privacy"]', path: "/", title: "4. 금액 가리기", body: "발표나 화면 공유 때 계좌 금액만 흐리게 가리고 비중·점수는 그대로 보여줍니다." },

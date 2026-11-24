@@ -3,7 +3,7 @@ import { API_URL, api } from "../lib/api";
 import { ErrorState, Legend, Skeleton } from "../components/ui";
 
 const FLOW = [
-  ["계좌 불러오기", "토스증권 오픈API(조회 전용)로 계좌·보유종목·환율을 가져와 원화 평가금액 기준 비중을 계산합니다. 미국 SEC 제출 기업만 분석 대상입니다."],
+  ["보유 종목 넣기", "가입한 사용자가 보유 종목 표를 붙여넣거나 CSV로 올리면 티커를 확인해 저장합니다(사용자별 분리). 운영자 계정만 토스증권 오픈API(조회 전용)로 계좌·보유종목·환율을 가져옵니다. 미국 SEC 제출 기업만 분석 대상이고 국내 종목은 제외 표시합니다."],
   ["실적발표 찾기", "SEC EDGAR에서 Item 2.02가 붙은 8-K를 최근 N건 찾습니다. 이 날짜가 실적발표·어닝콜 일자입니다."],
   ["가이던스 추출", "보도자료(Ex-99.1) Outlook 섹션과 업로드한 콜 원문에서 전망 문장을 찾아 지표·범위·단위·기간·GAAP 여부로 구조화합니다. AI 결과는 원문에 같은 문장이 있고 수치가 맞을 때만 남깁니다."],
   ["기간 정렬", "10-K 회계연도로 회사별 회계 달력(52/53주, 1·6·12월 결산)을 만들어 ‘fourth quarter’, ‘Q2 FY26’, ‘full year’를 실제 기간으로 바꿉니다."],
@@ -35,7 +35,7 @@ export default function Method() {
       <section className="card"><div className="card-h"><h2>데이터 출처</h2><span className="sub">현재 추출 엔진 {meta.data?.llm}</span></div>
         {meta.isLoading && <Skeleton h={140} />}{meta.isError && <ErrorState error={meta.error} retry={() => meta.refetch()} />}
         {meta.data && <table className="tbl"><thead><tr><th>출처</th><th>용도</th></tr></thead><tbody>
-          <tr><td><a href="https://developers.tossinvest.com" target="_blank" rel="noreferrer">토스증권 Open API</a></td><td>계좌·보유종목·환율 (조회 전용, 허용 IP·OAuth2)</td></tr>
+          <tr><td><a href="https://developers.tossinvest.com" target="_blank" rel="noreferrer">토스증권 Open API</a></td><td>계좌·보유종목·환율 (조회 전용, 허용 IP·OAuth2, 운영자 본인 계정만)</td></tr>
           {meta.data.sources.map((s) => <tr key={s.name}><td>{s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.name}</a> : s.name}</td><td>{s.use}</td></tr>)}</tbody></table>}</section>
       <section className="card"><div className="card-h"><h2>보안·개인정보</h2></div>
         <ul className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>

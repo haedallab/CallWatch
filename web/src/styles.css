@@ -280,3 +280,35 @@ mark.hl sup { font-size: 10.5px; font-weight: 700; color: var(--dark); margin-le
   @page { size: A4 landscape; margin: 10mm; }
 }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; flex: none; }
+
+/* ---- sign-in, account ---------------------------------------------------- */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.tb-login { height: 34px; padding: 0 14px; margin-left: 2px; border-radius: 8px; border: 1px solid rgba(199, 220, 245, .55); background: transparent;
+  color: #fff; font-weight: 650; font-size: 13.5px; cursor: pointer; }
+.tb-login:hover { background: rgba(255, 255, 255, .12); }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 750; font-size: 13px;
+  background: var(--light); color: var(--dark); }
+.tb-icon .avatar { width: 28px; height: 28px; }
+.menu { display: flex; flex-direction: column; gap: 2px; }
+.menu > div.who { padding: 4px 6px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.menu a, .menu button { display: flex; align-items: center; gap: 9px; text-align: left; border: 0; background: none; padding: 8px 6px; border-radius: 6px;
+  font: inherit; font-size: 14px; color: var(--ink); text-decoration: none; cursor: pointer; }
+.menu a:hover, .menu button:hover { background: var(--tint); }
+.acct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; font-size: 14px; margin: 0; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; }
+.danger-zone { border-color: #F2C5C0; }
+.btn.danger { color: var(--bad); border-color: #F2C5C0; }
+.btn.danger:hover:not(:disabled) { background: #FDF0EE; border-color: var(--bad); }
+.btn.danger.solid { background: var(--bad); color: #fff; border-color: var(--bad); }
+.usage { height: 6px; border-radius: 3px; background: var(--paper); overflow: hidden; } .usage i { display: block; height: 100%; background: var(--blue); }
+.import-tabs { margin-bottom: 4px; }
+.paste { width: 100%; min-height: 150px; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; resize: vertical; }
+.paste:focus, .input:focus { outline: 2px solid var(--light); outline-offset: 1px; border-color: var(--blue); }
+.drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.drop.over { border-color: var(--blue); background: var(--tint); }
+.prev-row.bad td { color: var(--bad); }
+.prev-row.kr td:first-child b { color: var(--muted); }
+.linklike { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--dark); text-decoration: underline; cursor: pointer; }

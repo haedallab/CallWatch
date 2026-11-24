@@ -345,10 +345,10 @@ class DemoSource:
         return document(url)
 
     @staticmethod
-    def transcripts(ticker: str) -> list[dict]:
+    def transcripts(ticker: str, user_id: str | None = None) -> list[dict]:
         from .transcripts import all_transcripts
 
-        return _transcript(ticker.upper()) + all_transcripts(ticker)
+        return _transcript(ticker.upper()) + all_transcripts(ticker, user_id)
 
     @staticmethod
     def closes(ticker: str, start: str) -> pd.Series:

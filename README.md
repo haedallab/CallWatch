@@ -1,6 +1,6 @@
 # CallWatch — 내 계좌의 어닝콜 가이던스 × SEC 공시 × 주가
 
-**토스증권 계좌의 보유종목**을 불러와, 각 회사 경영진이 실적발표·어닝콜에서 내놓은 **가이던스(전망)**를
+사용자가 가입해 **자기 미국 주식 보유종목**을 넣으면(붙여넣기·CSV·검색, 운영자 계정은 토스증권 Open API), 각 회사 경영진이 실적발표·어닝콜에서 내놓은 **가이던스(전망)**를
 그 전망이 가리키는 회계 기간의 **SEC EDGAR 10-Q/10-K(XBRL) 실적**과 맞추고(Align), 결과가 공개된 날의
 **주가 반응**까지 보여주는 서비스입니다. KAIST 디지털금융MBA 「금융빅데이터분석실습」 팀 프로젝트.
 
@@ -8,14 +8,31 @@
 |---|---|---|
 | 프론트엔드 | React 18 + Vite + TypeScript, TanStack Query, Recharts, cmdk | **Vercel** (`web/`) |
 | 백엔드 | FastAPI (Swagger `/docs`), SSE 스트리밍 | **Render** (`backend/`, `render.yaml`) |
-| 데이터 | SQLite 기본 · `DATABASE_URL`로 Supabase PostgreSQL | Supabase (선택) |
+| 로그인 | Supabase Auth (Google · 이메일 링크), 서버는 JWT(JWKS) 검증 | Supabase |
+| 데이터 | SQLite 기본 · `DATABASE_URL`로 Supabase PostgreSQL | Supabase |
 | 외부 API | 토스증권 Open API(조회 전용) · SEC EDGAR · yfinance/Stooq · Gemini | — |
 
 > 투자 권유가 아닙니다. 판정은 SEC XBRL(GAAP) 수치 기준이며, 토스증권 연동은 조회 전용으로 주문 API를 호출하지 않습니다.
 
 ---
 
-## 1. 토스증권 연동
+## 0. 여러 사용자가 쓰는 구조
+
+| 구분 | 로그인 안 함 | 로그인 사용자 | 운영자(`OWNER_EMAILS`) |
+|---|---|---|---|
+| 데모 데이터(가상 기업) | 둘러보기 · 브라우저별 임시 보유 종목 | ○ | ○ |
+| 실데이터(SEC) 분석 | – | 하루 `DAILY_ANALYSIS_LIMIT`회 | 제한 없음 |
+| 보유 종목 입력 | – | **붙여넣기 · CSV · 검색** | 붙여넣기 + **토스증권 동기화** |
+| 어닝콜 원문 업로드 | – | 나에게만 보임 | 나에게만 보임 |
+
+- **사용자별로 분리**: 보유 종목·업로드한 원문·그 원문으로 만든 분석은 사용자 id로 저장하고, 다른 사용자에게 보이지 않습니다.
+- **공유 캐시**: 공시(보도자료·XBRL)만으로 만든 분석 결과는 종목별로 한 번만 계산해 모든 사용자가 같이 씁니다. 사용자가 원문을 올린 종목만 개인 전용 결과로 따로 저장합니다.
+- **모드는 요청별**: 데모/실데이터는 서버 전역이 아니라 브라우저마다 고르며 `X-Data-Mode` 헤더로 보냅니다.
+- **토스증권은 운영자 계정만**: 토스증권 Open API는 계좌 주인에게 발급되고 받은 정보는 본인 투자 목적으로만 쓰도록 되어 있어, 다른 사람의 키를 받아 대신 조회하지 않습니다. 일반 사용자는 토스증권 앱·엑셀의 보유 종목 표를 붙여넣으면 되고(국내 6자리 종목코드는 자동으로 분석 제외), 화면에서 이유를 안내합니다.
+- **내 데이터 삭제**: `/account`에서 보유 종목·원문·개인 분석·사용 기록을 지웁니다(`SUPABASE_SERVICE_ROLE_KEY`가 있으면 로그인 계정까지).
+- Supabase 설정이 없으면 예전처럼 로그인 없는 1인용으로 동작합니다(`OWNER_KEY` 방식).
+
+## 1. 토스증권 연동 (운영자 계정 전용)
 
 공식 토스증권 Open API(`https://openapi.tossinvest.com`)를 **서버에서만** 호출합니다.
 
@@ -23,14 +40,14 @@
 |---|---|
 | 키 발급 | 토스증권 PC 웹(WTS) 로그인 → 설정 → Open API → `client_id`, `client_secret` |
 | 허용 IP | 같은 화면에서 **백엔드 서버의 공인 IP**를 등록 (미등록 시 403). 앱이 403을 받으면 서버 공인 IP를 찾아 안내 문구에 보여줍니다 |
-| 서버 설정 | Render 환경변수 `TOSS_CLIENT_ID`, `TOSS_CLIENT_SECRET`, `OWNER_KEY` |
+| 서버 설정 | Render 환경변수 `TOSS_CLIENT_ID`, `TOSS_CLIENT_SECRET`, `OWNER_EMAILS`(운영자 로그인 이메일) |
 | 호출 | `POST /oauth2/token`(client_credentials) → `GET /api/v1/accounts` → `GET /api/v1/holdings` (헤더 `X-Tossinvest-Account: accountSeq`) → `GET /api/v1/exchange-rate` |
 
 구현 포인트 (`backend/app/services/toss.py`)
 - 토큰은 클라이언트당 1개만 유효하고 재발급하면 이전 토큰이 무효화되므로 **서버에서 캐시**하고, 401이면 한 번만 재발급합니다.
 - 금액은 문자열, 손익률은 소수비율(0.1179 = 11.79%)로 오므로 숫자로 변환하고, 미국 종목은 환율로 원화 환산해 **평가금액 기준 비중**을 계산합니다.
 - 미국 종목만 SEC 분석 대상으로 표시하고, 국내 종목은 비중 표시에만 쓰며 화면에 제외 사유를 보여줍니다.
-- 계좌번호는 가운데를 가려 반환하고, `OWNER_KEY`가 설정되면 금액·동기화는 `X-Owner-Key` 헤더가 있는 소유자만 볼 수 있습니다. 방문자에게는 비중과 점수만 보입니다.
+- 계좌번호는 가운데를 가려 반환하고, 동기화는 `OWNER_EMAILS`에 있는 로그인 계정만 할 수 있습니다(그 외 403). 동기화한 보유 종목은 운영자 본인의 포트폴리오에만 저장됩니다.
 - 데모 모드에는 같은 응답 구조의 **가상 계좌**가 있어 네트워크 없이 연결 흐름 전체를 시연할 수 있습니다.
 
 ## 2. UI/UX 고도화 (평가 20% 항목 대응)
@@ -76,25 +93,28 @@
 pip install -r requirements-dev.txt
 cp .env.example .env              # SEC_USER_AGENT, (선택) GEMINI_API_KEY, TOSS_* 
 ./run.sh                          # API :8000/docs + React :5173
-cd backend && pytest -q           # 테스트 18건
+cd backend && pytest -q           # 테스트 27건 (사용자 분리·운영자 전용 토스·붙여넣기 포함)
 ```
 네트워크 없이 시연: 화면 오른쪽 위 **데모 데이터** 스위치(가상 기업 4곳 + 가상 토스증권 계좌) 또는 `DEMO_MODE=1`.
 
 ### 배포
-1. **Render**: `render.yaml` 블루프린트로 백엔드 생성 → 환경변수 입력. 서비스의 아웃바운드 공인 IP를 토스증권 허용 IP에 등록
-2. **Vercel**: Root Directory `web`, Framework Vite, 환경변수 `VITE_API_URL=https://<api>.onrender.com` (`vercel.json`에 SPA 라우팅·보안 헤더 포함)
-3. Render의 `CORS_ORIGINS`에 Vercel 주소 입력
-4. 발표 10분 전 백엔드 `/health`를 한 번 열어 무료 인스턴스를 깨워 둡니다
+1. **Supabase**: 프로젝트 생성 → Authentication에서 Email(매직 링크)과 Google 공급자 켜기 → URL Configuration의 Site URL·Redirect URL에 Vercel 주소 입력. Project URL, publishable(anon) 키, Postgres 연결 문자열을 복사
+2. **Render**: `render.yaml` 블루프린트로 백엔드 생성 → `SUPABASE_URL`, `DATABASE_URL`, `OWNER_EMAILS`, `SEC_USER_AGENT`, `GEMINI_API_KEY`, (운영자용) `TOSS_*` 입력. 아웃바운드 공인 IP를 토스증권 허용 IP에 등록
+3. **Vercel**: Root Directory `web`, Framework Vite, 환경변수 `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (`vercel.json`에 SPA 라우팅·보안 헤더 포함)
+4. Render의 `CORS_ORIGINS`에 Vercel 주소 입력
+5. 발표 10분 전 백엔드 `/health`를 한 번 열어 무료 인스턴스를 깨워 둡니다
 
 ## 5. API (Swagger: `/docs`)
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| GET | `/api/broker/status` | 토스증권 연결 상태, 계좌 목록(마스킹), 오류 원인·해결 힌트 |
-| POST | `/api/broker/toss/sync` | 보유종목 → 포트폴리오 동기화 (소유자 전용) |
+| GET · DELETE | `/api/me` | 로그인 사용자·권한·오늘 사용량 · 내 데이터 삭제 |
+| POST | `/api/portfolio/preview` | 붙여넣은 표/CSV 해석 → 티커 확인·국내 종목 표시 (저장 안 함) |
+| GET | `/api/broker/status` | 토스증권 연결 상태 (운영자 외에는 ‘운영자 전용’ 안내) |
+| POST | `/api/broker/toss/sync` | 보유종목 → 운영자 포트폴리오 동기화 (운영자 전용) |
 | GET | `/api/analyze/{t}/stream` | 분석 실행 + 단계별 진행 SSE |
 | POST | `/api/analyze/{t}` | 분석 실행 (일괄) |
-| GET | `/api/portfolio` · `/summary` | 보유종목(방문자는 금액 제외) · 가중 신뢰도·피드·제외 종목 |
+| GET · PUT | `/api/portfolio` · `/summary` | 내 보유종목 · 가중 신뢰도·피드·제외 종목 |
 | GET | `/api/report/{t}` | 분석 결과 |
 | POST | `/api/extract` · `/api/transcripts` | 텍스트 가이던스 추출 · 콜 원문 저장 |
 | POST | `/api/qa` | 종목 한정 RAG 질의응답 + 출처 |
@@ -102,7 +122,7 @@ cd backend && pytest -q           # 테스트 18건
 
 ## 6. 발표 시연 순서 (5분)
 0. 상단 **발표 모드**로 문제·결과를 슬라이드로 설명(방향키) → Esc로 앱 복귀해 시연
-1. 첫 화면 → **토스증권에서 가져오기** → 3단계 마법사(국내 종목 제외 안내까지)
+1. 로그인(Google) → **보유 종목 입력**에 토스증권 앱 표 붙여넣기 → 국내 종목 제외 표시 확인 후 저장 (운영자 계정은 **토스증권에서 가져오기** 3단계 마법사)
 2. 분석 시작 → 오른쪽 아래 실시간 진행 → 포트폴리오 KPI·이행 지도
 3. ‘지금 확인할 것’ 카드 클릭 → 해당 가이던스로 딥링크, `J`/`K`로 이동, `O`로 원문 드로어
 4. 발표문 정렬 보기 → 강조 문장 ↔ 판정 카드

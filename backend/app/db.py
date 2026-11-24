@@ -23,7 +23,8 @@ SCHEMA = [
         ticker TEXT PRIMARY KEY, weight DOUBLE PRECISION, shares DOUBLE PRECISION, note TEXT)""",
     """CREATE TABLE IF NOT EXISTS transcripts (
         id TEXT PRIMARY KEY, ticker TEXT NOT NULL, call_date TEXT NOT NULL,
-        source TEXT NOT NULL, text TEXT NOT NULL, created_at DOUBLE PRECISION NOT NULL)""",
+        source TEXT NOT NULL, text TEXT NOT NULL, created_at DOUBLE PRECISION NOT NULL,
+        user_id TEXT NOT NULL DEFAULT 'local')""",
     """CREATE TABLE IF NOT EXISTS reports (
         ticker TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at DOUBLE PRECISION NOT NULL)""",
 ]
@@ -51,6 +52,10 @@ def cursor() -> Iterator[Any]:
             cur = _conn.cursor()
             for stmt in SCHEMA:
                 cur.execute(stmt)
+            try:  # migrate databases created before multi-user support
+                cur.execute("ALTER TABLE transcripts ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'")
+            except Exception:
+                pass  # column already exists
             if not _IS_PG:
                 _conn.commit()
         cur = _conn.cursor()
@@ -114,27 +119,46 @@ def replace_holdings(items: list[dict]) -> None:
         )
 
 
-# ---- transcripts ----------------------------------------------------------------
+# ---- transcripts (owned by a user) -------------------------------------------------
 
-def save_transcript(ticker: str, call_date: str, source: str, text: str) -> str:
-    tid = f"{ticker.upper()}:{call_date}:{source}"
+def save_transcript(ticker: str, call_date: str, source: str, text: str, user_id: str = "local") -> str:
+    tid = f"{user_id}:{ticker.upper()}:{call_date}:{source}"
     execute(
-        "INSERT INTO transcripts (id, ticker, call_date, source, text, created_at) VALUES (?, ?, ?, ?, ?, ?) "
+        "INSERT INTO transcripts (id, ticker, call_date, source, text, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET text = excluded.text, created_at = excluded.created_at",
-        (tid, ticker.upper(), call_date, source, text, time.time()),
+        (tid, ticker.upper(), call_date, source, text, time.time(), user_id),
     )
     return tid
 
 
-def list_transcripts(ticker: str) -> list[dict]:
+def list_transcripts(ticker: str, user_id: str | None = "local") -> list[dict]:
+    if user_id is None:
+        return []
     return fetchall(
-        "SELECT id, ticker, call_date, source, text FROM transcripts WHERE ticker = ? ORDER BY call_date",
-        (ticker.upper(),),
+        "SELECT id, ticker, call_date, source, text FROM transcripts WHERE ticker = ? AND user_id = ? ORDER BY call_date",
+        (ticker.upper(), user_id),
     )
 
 
-def delete_transcript(tid: str) -> None:
-    execute("DELETE FROM transcripts WHERE id = ?", (tid,))
+def delete_transcript(tid: str, user_id: str = "local") -> None:
+    execute("DELETE FROM transcripts WHERE id = ? AND user_id = ?", (tid, user_id))
+
+
+def delete_user(user_id: str) -> None:
+    """Remove everything stored for one user (holdings, transcripts, personal reports, usage counters)."""
+    execute("DELETE FROM transcripts WHERE user_id = ?", (user_id,))
+    for prefix in (f"holdings:demo:{user_id}", f"holdings:live:{user_id}", f"broker:last:demo:{user_id}",
+                   f"broker:last:live:{user_id}", f"corpus:demo:{user_id}:", f"corpus:live:{user_id}:", f"usage:{user_id}:"):
+        execute("DELETE FROM kv_cache WHERE key LIKE ?", (prefix + "%",))
+    for prefix in (f"DEMO:{user_id.upper()}:", f"LIVE:{user_id.upper()}:"):
+        execute("DELETE FROM reports WHERE ticker LIKE ?", (prefix + "%",))
+
+
+def bump_usage(user_id: str, day: str) -> int:
+    key = f"usage:{user_id}:{day}"
+    n = (cache_get(key) or 0) + 1
+    cache_set(key, n)
+    return n
 
 
 # ---- reports --------------------------------------------------------------------

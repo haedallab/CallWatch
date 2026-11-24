@@ -42,7 +42,7 @@ export default function Transcript() {
   return (
     <>
       <div className="page-head"><div><h1>어닝콜 원문 넣기</h1>
-        <p>보도자료에 없는 ‘말로 한 가이던스’를 잡아냅니다. 콜 트랜스크립트를 넣으면 전망 문장을 찾아 표시하고, 저장하면 SEC 실적과 함께 정렬됩니다.</p></div></div>
+        <p>보도자료에 없는 ‘말로 한 가이던스’를 잡아냅니다. 콜 트랜스크립트를 넣으면 전망 문장을 찾아 표시하고, 저장하면 SEC 실적과 함께 정렬됩니다. 올린 원문과 그 원문으로 만든 분석은 나에게만 보입니다.</p></div></div>
       <section className="card col">
         <div className="row">
           <div className="field" style={{ width: 200 }}><label htmlFor="t">종목</label>

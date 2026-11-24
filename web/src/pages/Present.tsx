@@ -188,7 +188,7 @@ function CompanySlide({ r, weight }: { r: Report; weight?: number }) {
 
 function MethodSlide() {
   const steps = [
-    ["계좌", "토스증권 오픈API(조회 전용)로 보유종목·비중"],
+    ["보유 종목", "가입 후 붙여넣기·CSV로 입력 (운영자는 토스증권 오픈API 조회)"],
     ["발표 찾기", "SEC 8-K Item 2.02 = 실적발표일"],
     ["가이던스 추출", "보도자료 Outlook + 콜 원문, 규칙+AI 교차검증"],
     ["기간 정렬", "회사별 회계 달력으로 대상 분기·연도 확정"],
@@ -204,7 +204,7 @@ function MethodSlide() {
           <span className="small muted">이행 = 범위 부합 또는 유리한 방향 이탈. Non-GAAP 가이던스는 GAAP 실적과 1:1 비교가 안 되어 점수에서 제외.</span><Legend /></div>
         <div className="card col"><b>데이터 출처</b>
           <ul className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
-            <li>토스증권 Open API — 계좌·보유종목·환율</li><li>SEC EDGAR — Submissions, XBRL companyfacts, 8-K Ex-99.1, 10-Q/10-K</li>
+            <li>보유 종목 — 사용자 입력(붙여넣기·CSV) · 운영자 계정은 토스증권 Open API</li><li>SEC EDGAR — Submissions, XBRL companyfacts, 8-K Ex-99.1, 10-Q/10-K</li>
             <li>Yahoo Finance / Stooq — 일별 종가, SPY</li><li>어닝콜 트랜스크립트 — 사용자 업로드</li><li>Gemini — 가이던스 추출 보조, 출처 기반 질의응답</li>
           </ul>
           <span className="xs muted">투자 권유가 아니며, 판단 전 공시 원문을 확인해야 합니다.</span></div>

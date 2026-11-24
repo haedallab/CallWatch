@@ -29,12 +29,12 @@ def local_transcripts(ticker: str) -> list[dict]:
     return out
 
 
-def all_transcripts(ticker: str) -> list[dict]:
-    rows = db.list_transcripts(ticker) + local_transcripts(ticker)
+def all_transcripts(ticker: str, user_id: str | None = "local") -> list[dict]:
+    rows = db.list_transcripts(ticker, user_id) + local_transcripts(ticker)
     return sorted(rows, key=lambda r: r["call_date"])
 
 
-def fetch_api_ninjas(ticker: str, year: int, quarter: int) -> dict | None:
+def fetch_api_ninjas(ticker: str, year: int, quarter: int, user_id: str = "local") -> dict | None:
     if not settings.api_ninjas_key:
         return None
     r = httpx.get(
@@ -52,7 +52,7 @@ def fetch_api_ninjas(ticker: str, year: int, quarter: int) -> dict | None:
     call_date = (data.get("date") or "")[:10]
     if not text or not call_date:
         return None
-    db.save_transcript(ticker, call_date, "api-ninjas", text)
+    db.save_transcript(ticker, call_date, "api-ninjas", text, user_id)
     return {"ticker": ticker.upper(), "call_date": call_date, "source": "api-ninjas", "text": text}
 
 
