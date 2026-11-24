@@ -229,7 +229,11 @@ def metric_mentions(s: str) -> list[tuple[int, int, str]]:
 _NOT_SEGMENT = {"Total", "Our", "The", "We", "GAAP", "Non", "Company", "Consolidated", "Net", "Gross", "Operating",
                 "Full", "Fiscal", "Quarterly", "Annual", "First", "Second", "Third", "Fourth", "Q1", "Q2", "Q3", "Q4",
                 "Group", "Overall", "Firmwide", "Diluted", "Adjusted", "Core", "Worldwide", "Revenue", "Revenues",
-                "This", "That", "In", "For", "And", "As", "On", "At", "To", "With", "Expect", "Expected"}
+                "This", "That", "In", "For", "And", "As", "On", "At", "To", "With", "Expect", "Expected",
+                # metric words themselves (table rows such as "Earnings per Share (non-GAAP) $22.50 to $24.00")
+                "Earnings", "Per", "Share", "EPS", "Income", "Interest", "Expense", "Expenses", "Margin", "Margins",
+                "Capital", "Expenditures", "Pre-tax", "Pretax", "Reported", "Non-GAAP", "Tax", "Rate", "Cash", "Flow",
+                "Free", "Effective", "Other", "Sales", "Cost", "Costs", "Of", "Excluding", "Ex"}
 _SEG = re.compile(r"((?:[A-Z][A-Za-z&+\-]*\s+){1,3})(?=(?:segment\s+)?(?:revenue|revenues|sales|operating income|"
                   r"operating margin|gross margin|margin|net interest income)\b)")
 

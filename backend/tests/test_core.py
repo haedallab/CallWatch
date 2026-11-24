@@ -165,3 +165,9 @@ def test_call_transcript_results_vs_expectations_are_not_guidance():
     assert segment_of("In Azure, we expect Q3 revenue growth to be between 31% and 32%") == "Azure"
     assert segment_of("M365 commercial cloud revenue growth should be between 14% and 15%") == "M365"
     assert segment_of("Lilly anticipates 2026 revenue of $80 billion") is None
+
+
+def test_table_rows_naming_the_metric_are_not_segments():
+    from app.services.guidance import segment_of
+    assert segment_of("Earnings per share (non-GAAP) $22.50 to $24.00") is None
+    assert segment_of("Earnings per Share (reported) $22.05 to $23.55") is None
