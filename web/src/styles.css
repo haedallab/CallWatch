@@ -312,3 +312,11 @@ mark.hl sup { font-size: 10.5px; font-weight: 700; color: var(--dark); margin-le
 .prev-row.bad td { color: var(--bad); }
 .prev-row.kr td:first-child b { color: var(--muted); }
 .linklike { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--dark); text-decoration: underline; cursor: pointer; }
+
+/* ---- public front page ---------------------------------------------------- */
+.ellip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nowrap { white-space: nowrap; }
+.cta-mine { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  background: var(--tint); border-color: #CFE0F2; }
+.cta-mine h2 { font-size: 18px; }
+.owner-key summary { cursor: pointer; color: var(--muted); } .owner-key[open] summary { color: var(--ink); }

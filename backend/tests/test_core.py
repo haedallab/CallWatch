@@ -3,6 +3,7 @@ import os
 import tempfile
 
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
+os.environ.setdefault("WARM_FEATURED", "0")
 os.environ["DEMO_MODE"] = "1"
 
 import pytest  # noqa: E402

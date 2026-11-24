@@ -4,6 +4,7 @@ import tempfile
 import time
 
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
+os.environ.setdefault("WARM_FEATURED", "0")
 
 import jwt  # noqa: E402
 import pytest  # noqa: E402
@@ -64,20 +65,20 @@ def test_anonymous_demo_visitor_gets_own_scratch_space(c):
 
 
 def test_toss_only_for_owner_account(c):
-    other = H("user-c", "c@x.com")
+    other = H("user-c", "c@x.com", mode="live")
     st = c.get("/api/broker/status", headers=other).json()
     assert st["available"] is False and st["owner_only"] is True
     assert c.post("/api/broker/toss/sync", json={}, headers=other).status_code == 403
     me = c.get("/api/me", headers=other).json()
     assert me["signed_in"] and not me["owner"] and not me["toss_available"]
+    assert c.get("/api/me", headers=H("user-o", "Owner@kaist.ac.kr", mode="live")).json()["owner"] is True
 
+    # the fictional demo account is open to everyone, and lands only in the caller's own portfolio
     own = H("user-o", "Owner@kaist.ac.kr")
-    r = c.post("/api/broker/toss/sync", json={}, headers=own)  # demo fixture
+    r = c.post("/api/broker/toss/sync", json={}, headers=own)
     assert r.status_code == 200 and r.json()["n"] > 0
-    assert c.get("/api/me", headers=own).json()["toss_available"] is True
-    # synced holdings land only in the owner's portfolio
     assert any(h.get("source") == "toss" for h in c.get("/api/portfolio", headers=own).json())
-    assert not any(h.get("source") == "toss" for h in c.get("/api/portfolio", headers=other).json())
+    assert not any(h.get("source") == "toss" for h in c.get("/api/portfolio", headers=H("user-c", "c@x.com")).json())
 
 
 def test_transcripts_private_and_personal_report(c):
@@ -105,12 +106,12 @@ def test_delete_my_data(c):
     assert [r["ticker"] for r in c.get("/api/portfolio", headers=a).json()] != ["HNRT"]
 
 
-def test_live_analysis_requires_login_and_has_daily_limit(c):
+def test_live_analysis_requires_login_when_signin_is_on_and_has_daily_limit(c):
     r = c.post("/api/analyze/AAPL", headers={"X-Data-Mode": "live"})
     assert r.status_code == 401
     h = H("user-l", "l@x.com", mode="live")
     main.db.bump_usage("user-l", time.strftime("%Y-%m-%d"))  # use up the 1-per-day test limit
-    assert c.post("/api/analyze/AAPL", headers=h).status_code == 429
+    assert c.post("/api/analyze/AMZN", headers=h).status_code == 429
 
 
 def test_preview_parses_paste_and_flags_korean_codes(c):

@@ -181,6 +181,15 @@ def save_report(ticker: str, report: dict) -> None:
     )
 
 
+def report_updated(ticker: str) -> float | None:
+    rows = fetchall("SELECT updated_at FROM reports WHERE ticker = ?", (ticker.upper(),))
+    return rows[0]["updated_at"] if rows else None
+
+
+def count_usage(key: str, day: str) -> int:
+    return cache_get(f"usage:{key}:{day}") or 0
+
+
 def get_report(ticker: str) -> dict | None:
     rows = fetchall("SELECT value FROM reports WHERE ticker = ?", (ticker.upper(),))
     return json.loads(rows[0]["value"]) if rows else None

@@ -70,6 +70,20 @@ METRICS: dict[str, dict] = {
         "concepts": ["NetCashProvidedByUsedInOperatingActivities"],
         "keywords": ["operating cash flow", "cash flow from operations"],
     },
+    # banks (e.g. Citigroup): guidance is given on NII and noninterest expense rather than margins
+    "net_interest_income": {
+        "label": "순이자이익 (NII)",
+        "kind": "amount",
+        "concepts": ["InterestIncomeExpenseNet", "InterestIncomeExpenseAfterProvisionForLoanLoss"],
+        "keywords": ["net interest income", "nii"],
+    },
+    "noninterest_expense": {
+        "label": "비이자비용 (Expenses)",
+        "kind": "amount",
+        "concepts": ["NoninterestExpense"],
+        "keywords": ["noninterest expense", "non-interest expense", "noninterest expenses", "non-interest expenses",
+                     "total expenses"],
+    },
     # helpers used only as ratio components
     "gross_profit": {
         "label": "매출총이익",
@@ -91,6 +105,7 @@ METRICS: dict[str, dict] = {
 DIRECTION = {
     "revenue": 1, "gross_margin": 1, "operating_margin": 1, "operating_income": 1, "net_income": 1,
     "eps": 1, "operating_cash_flow": 1, "operating_expenses": -1, "capex": 0,
+    "net_interest_income": 1, "noninterest_expense": -1,
 }
 
 # metrics whose non-GAAP guidance cannot be checked 1:1 against GAAP XBRL
@@ -98,6 +113,7 @@ GAAP_SENSITIVE = {"eps", "gross_margin", "operating_margin", "operating_expenses
 
 # Order matters: more specific phrases first.
 KEYWORD_ORDER = [
+    "net_interest_income", "noninterest_expense",
     "gross_margin", "operating_margin", "operating_expenses", "operating_income",
     "operating_cash_flow", "capex", "eps", "net_income", "gross_profit", "revenue",
 ]

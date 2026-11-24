@@ -16,7 +16,12 @@ interface Slide { key: string; label: string; body: ReactNode }
 export default function Present() {
   const nav = useNavigate();
   const app = useApp();
-  const sum = useQuery({ queryKey: ["summary"], queryFn: api.summary });
+  const mine = useQuery({ queryKey: ["summary"], queryFn: api.summary });
+  const feat = useQuery({ queryKey: ["featured"], queryFn: api.featured });
+  // present my portfolio when it has results, otherwise the public featured stocks
+  const useMine = !!mine.data?.companies.length;
+  const sum = useMine ? mine : feat;
+  const scope = useMine ? "내 포트폴리오" : "주요 종목";
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const scored = (sum.data?.companies || []).filter((c) => c.score !== null).sort((a, b) => b.weight - a.weight).slice(0, 5);
   const reps = useQueries({ queries: scored.map((c) => ({ queryKey: ["report", c.ticker], queryFn: () => api.report(c.ticker) })) });
@@ -36,26 +41,26 @@ export default function Present() {
       { key: "cover", label: "표지", body: (
         <div className="pcover">
           <div className="pcover-eye">CallWatch · 금융빅데이터분석실습 팀 프로젝트</div>
-          <h1>내 포트폴리오의 가이던스,<br />지켜지고 있나요?</h1>
+          <h1>{scope}의 가이던스,<br />지켜지고 있나요?</h1>
           <p>어닝콜·실적발표 가이던스 × SEC 10-Q/10-K 실적 × 주가 반응</p>
           <div className="pcover-grid">
             <div><span>기준일</span><b>{today}</b></div>
             <div><span>분석 종목</span><b>{s.n_scored}개 · 가이던스 {feed.length}건</b></div>
-            <div><span>비중 가중 신뢰도</span><b>{s.weighted_score?.toFixed(0) ?? "–"}점</b></div>
-            <div><span>데이터</span><b>{health.data?.mode === "demo" ? "데모 (가상 기업)" : "SEC EDGAR · 토스증권"}</b></div>
+            <div><span>{useMine ? "비중 가중 신뢰도" : "평균 신뢰도"}</span><b>{s.weighted_score?.toFixed(0) ?? "–"}점</b></div>
+            <div><span>데이터</span><b>{health.data?.mode === "demo" ? "데모 (가상 기업)" : "SEC EDGAR 공시 · 주가"}</b></div>
           </div>
         </div>) },
       { key: "overview", label: "한눈에 보기", body: (
         <>
           <h2 className="ptitle">한눈에 보기</h2>
           <div className="grid-kpi">
-            <Kpi accent label="비중 가중 경영진 신뢰도" value={s.weighted_score?.toFixed(0) ?? "–"} sub="100점 만점 · 80 이상 높음" />
+            <Kpi accent label={useMine ? "비중 가중 경영진 신뢰도" : "평균 경영진 신뢰도"} value={s.weighted_score?.toFixed(0) ?? "–"} sub="100점 만점 · 80 이상 높음" />
             <Kpi label="약속 이행률" value={ver.length ? `${Math.round((kept / ver.length) * 100)}%` : "–"} sub={`검증된 ${ver.length}건 중 ${kept}건`} />
             <Kpi label="불리한 방향 이탈" value={`${ver.length - kept}건`} sub="가이던스를 나쁜 쪽으로 벗어남" />
             <Kpi label="결과 대기" value={`${pend.length}건`} sub={off.length ? `연간 진행률 부진 ${off.length}건` : "아직 실적 미발표"} />
           </div>
           <div className="card">
-            <div className="card-h"><h2>종목별 경영진 신뢰도</h2><span className="sub">막대 길이 = 점수, 오른쪽 = 비중</span></div>
+            <div className="card-h"><h2>종목별 경영진 신뢰도</h2><span className="sub">막대 길이 = 점수{useMine ? ", 오른쪽 = 비중" : ""}</span></div>
             <div className="col" style={{ gap: 10 }}>
               {[...s.companies].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)).map((c) => {
                 const color = c.score == null ? C.na : c.score >= 80 ? C.within : c.score >= 60 ? C.drift : C.bad;
@@ -63,7 +68,7 @@ export default function Present() {
                   <div key={c.ticker} className="row" style={{ flexWrap: "nowrap", gap: 14 }}>
                     <b style={{ width: 64 }}>{c.ticker}</b>
                     <div className="scorebar" style={{ flex: 1 }}><div className="t" style={{ height: 14 }}><i style={{ width: `${c.score ?? 0}%`, background: color }} /></div><b style={{ color, width: 34, textAlign: "right" }}>{c.score ?? "–"}</b></div>
-                    <span className="small muted" style={{ width: 150 }}>{c.style.split(" (")[0]} · 비중 {pct(c.weight, 0)}</span>
+                    <span className="small muted" style={{ width: 150 }}>{c.style.split(" (")[0]}{useMine ? ` · 비중 ${pct(c.weight, 0)}` : ""}</span>
                   </div>
                 );
               })}
@@ -106,8 +111,8 @@ export default function Present() {
   if (!slides.length) {
     return (
       <div className="present"><div className="deck">
-        <Empty title="발표할 분석 결과가 없습니다" body="포트폴리오에서 종목을 분석하면 그 결과로 발표 슬라이드가 자동으로 만들어집니다.">
-          <button className="btn primary" onClick={() => nav("/")}>포트폴리오로 가기</button>
+        <Empty title="발표할 분석 결과가 없습니다" body="주요 종목 분석이 끝나거나 내 종목을 분석하면 그 결과로 발표 슬라이드가 자동으로 만들어집니다.">
+          <button className="btn primary" onClick={() => nav("/")}>주요 종목으로 가기</button>
         </Empty>
       </div></div>
     );
@@ -188,7 +193,7 @@ function CompanySlide({ r, weight }: { r: Report; weight?: number }) {
 
 function MethodSlide() {
   const steps = [
-    ["보유 종목", "가입 후 붙여넣기·CSV로 입력 (운영자는 토스증권 오픈API 조회)"],
+    ["종목", "주요 종목은 서버가 매일 분석 · 내 종목은 가입 없이 붙여넣기 (운영자는 토스증권 오픈API)"],
     ["발표 찾기", "SEC 8-K Item 2.02 = 실적발표일"],
     ["가이던스 추출", "보도자료 Outlook + 콜 원문, 규칙+AI 교차검증"],
     ["기간 정렬", "회사별 회계 달력으로 대상 분기·연도 확정"],
@@ -204,7 +209,7 @@ function MethodSlide() {
           <span className="small muted">이행 = 범위 부합 또는 유리한 방향 이탈. Non-GAAP 가이던스는 GAAP 실적과 1:1 비교가 안 되어 점수에서 제외.</span><Legend /></div>
         <div className="card col"><b>데이터 출처</b>
           <ul className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
-            <li>보유 종목 — 사용자 입력(붙여넣기·CSV) · 운영자 계정은 토스증권 Open API</li><li>SEC EDGAR — Submissions, XBRL companyfacts, 8-K Ex-99.1, 10-Q/10-K</li>
+            <li>보유 종목 — 사용자 입력(붙여넣기·CSV, 브라우저별 저장) · 운영자는 토스증권 Open API</li><li>SEC EDGAR — Submissions, XBRL companyfacts, 8-K Ex-99.1, 10-Q/10-K</li>
             <li>Yahoo Finance / Stooq — 일별 종가, SPY</li><li>어닝콜 트랜스크립트 — 사용자 업로드</li><li>Gemini — 가이던스 추출 보조, 출처 기반 질의응답</li>
           </ul>
           <span className="xs muted">투자 권유가 아니며, 판단 전 공시 원문을 확인해야 합니다.</span></div>

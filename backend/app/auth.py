@@ -21,6 +21,7 @@ _user: contextvars.ContextVar[dict | None] = contextvars.ContextVar("user", defa
 _mode: contextvars.ContextVar[str] = contextvars.ContextVar("mode", default="demo" if settings.demo_mode else "live")
 _client: contextvars.ContextVar[str] = contextvars.ContextVar("client", default="")
 _owner_key: contextvars.ContextVar[str] = contextvars.ContextVar("owner_key", default="")
+_ip: contextvars.ContextVar[str] = contextvars.ContextVar("ip", default="")
 
 
 class AuthError(Exception):
@@ -73,7 +74,8 @@ def verify(token: str) -> dict:
     return {"uid": claims["sub"], "email": (claims.get("email") or "").lower()}
 
 
-def bind(authorization: str | None, data_mode: str | None, client_id: str | None, owner_key: str | None):
+def bind(authorization: str | None, data_mode: str | None, client_id: str | None, owner_key: str | None,
+         ip: str | None = None):
     user = None
     if authorization and authorization.lower().startswith("bearer ") and settings.auth_enabled:
         user = verify(authorization.split(" ", 1)[1].strip())
@@ -83,12 +85,17 @@ def bind(authorization: str | None, data_mode: str | None, client_id: str | None
     cid = (client_id or "")[:64]
     _client.set(cid if re.fullmatch(r"[A-Za-z0-9-]{8,64}", cid or "") else "")
     _owner_key.set(owner_key or "")
+    _ip.set((ip or "")[:64])
+
+
+def ip() -> str:
+    return _ip.get()
 
 
 def user() -> dict | None:
-    """Signed-in user, or a fixed local user when sign-in is not configured."""
+    """Signed-in user (Supabase), or None. Without sign-in configured there are no accounts."""
     if not settings.auth_enabled:
-        return {"uid": "local", "email": ""}
+        return None
     return _user.get()
 
 
@@ -97,21 +104,34 @@ def mode() -> str:
 
 
 def uid() -> str | None:
-    """Storage owner id. Anonymous visitors get a per-browser id, but only for demo data."""
+    """Storage owner id. Signed-in users by account; everyone else by a per-browser id (no sign-up needed).
+    Calls without a browser id (Swagger, scripts) share "local" when sign-in is off."""
     u = user()
     if u:
         return u["uid"].lower()
-    if mode() == "demo" and _client.get():
+    if _client.get():
         return f"anon-{_client.get().lower()}"
-    return None
+    return None if settings.auth_enabled else "local"
+
+
+def is_verified_owner() -> bool:
+    """Explicitly identified operator (owner email or OWNER_KEY). Only these skip usage limits."""
+    if settings.auth_enabled and settings.owner_emails:
+        u = _user.get()
+        if u and u["email"] and u["email"] in settings.owner_emails:
+            return True
+    k = _owner_key.get()
+    return bool(settings.owner_key and k) and hmac.compare_digest(k, settings.owner_key)
 
 
 def is_owner() -> bool:
-    """May this caller use the server-side Toss connection and see account amounts?"""
-    if settings.auth_enabled:
+    """May this caller use the server-side Toss connection?"""
+    if settings.auth_enabled and settings.owner_emails:
         u = _user.get()
-        return bool(u and u["email"] and u["email"] in settings.owner_emails)
-    if not settings.owner_key:
-        return True
-    k = _owner_key.get()
-    return bool(k) and hmac.compare_digest(k, settings.owner_key)
+        if u and u["email"] and u["email"] in settings.owner_emails:
+            return True
+    if settings.owner_key:
+        k = _owner_key.get()
+        return bool(k) and hmac.compare_digest(k, settings.owner_key)
+    # no owner key: fine for local use, but never on a server that holds Toss credentials
+    return not settings.auth_enabled and not (settings.toss_client_id and settings.toss_client_secret)

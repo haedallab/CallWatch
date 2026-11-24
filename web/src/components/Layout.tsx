@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, KeyRound, LogOut, MonitorPlay, Search, Sparkles, UserRound } from "lucide-react";
+import { Eye, EyeOff, LogOut, MonitorPlay, Search, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL, api, ownerKey } from "../lib/api";
 import { useApp } from "../lib/store";
@@ -47,7 +47,8 @@ function AccountMenu() {
 }
 
 const NAV = [
-  { to: "/", label: "포트폴리오", end: true },
+  { to: "/", label: "주요 종목", end: true },
+  { to: "/portfolio", label: "내 포트폴리오" },
   { to: "/company", label: "종목" },
   { to: "/transcript", label: "원문 넣기" },
   { to: "/ask", label: "AI에게 묻기" },
@@ -109,7 +110,6 @@ export default function Layout() {
   const loc = useLocation();
   const nav = useNavigate();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 60_000, retry: 1 });
-  const broker = useQuery({ queryKey: ["broker"], queryFn: api.brokerStatus, retry: 0, enabled: !auth.enabled });
   const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyVal, setKeyVal] = useState(ownerKey.get());
@@ -146,9 +146,6 @@ export default function Layout() {
               title={app.masked ? "금액 보이기" : "금액 가리기 (발표·화면 공유용)"} aria-label="금액 가리기" data-tour="privacy">
               {app.masked ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
-            {!auth.enabled && broker.data?.owner_key_required && (
-              <button className="tb-icon" onClick={() => setKeyOpen(true)} title="소유자 키 입력" aria-label="소유자 키 입력" aria-pressed={broker.data.owner}><KeyRound size={17} /></button>
-            )}
             <StatusDot />
             <button className="tb-icon hide-m" onClick={() => app.setTour(true)} title="화면 둘러보기" aria-label="화면 둘러보기"><Sparkles size={17} /></button>
             <button className="tb-present" onClick={() => nav("/present")} data-tour="present"><MonitorPlay size={15} /><span className="hide-m">발표 모드</span></button>
@@ -158,13 +155,11 @@ export default function Layout() {
       </header>
 
       <main className="content" id="main">
-        {mode === "demo" && !loc.pathname.startsWith("/company") && (
+        {mode === "demo" && !loc.pathname.startsWith("/company") && !loc.pathname.startsWith("/present") && (
           <div className="banner" role="note">
             <Sparkles size={18} color={C.dark} style={{ flex: "none", marginTop: 2 }} />
-            <div>지금은 <b>가상 기업 4곳의 합성 데이터</b>로 보고 있습니다.{" "}
-              {auth.enabled && !auth.session
-                ? <>내 미국 주식으로 분석하려면 <button className="linklike" onClick={() => auth.openLogin(undefined, "live")}>로그인</button>한 뒤 보유 종목을 붙여넣으세요.</>
-                : <>내 보유 종목은 오른쪽 위 ‘데모’를 끄고 입력하세요.</>}</div>
+            <div>지금은 <b>가상 기업 4곳의 합성 데이터</b>로 보고 있습니다. 실제 SEC 공시로 보려면{" "}
+              <button className="linklike" onClick={() => auth.switchMode(false)}>실데이터로 돌아가기</button>.</div>
           </div>
         )}
         <ErrorBoundary resetKey={loc.pathname}><Outlet /></ErrorBoundary>

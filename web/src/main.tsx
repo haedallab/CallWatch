@@ -7,9 +7,10 @@ import "./styles.css";
 import { AppProvider } from "./lib/store";
 import { AuthProvider } from "./lib/auth";
 import Layout from "./components/Layout";
-import Portfolio from "./pages/Portfolio";
+import Home from "./pages/Home";
 import { Empty, PageSkeleton } from "./components/ui";
 
+const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Company = lazy(() => import("./pages/Company"));
 const Transcript = lazy(() => import("./pages/Transcript"));
 const Ask = lazy(() => import("./pages/Ask"));
@@ -29,7 +30,8 @@ createRoot(document.getElementById("root")!).render(
             <Routes>
               <Route path="present" element={<Present />} />
               <Route element={<Layout />}>
-                <Route index element={<Portfolio />} />
+                <Route index element={<Home />} />
+                <Route path="portfolio" element={<Portfolio />} />
                 <Route path="company" element={<Company />} />
                 <Route path="company/:ticker" element={<Company />} />
                 <Route path="transcript" element={<Transcript />} />

@@ -17,8 +17,7 @@ export default function Portfolio() {
   const auth = useAuth();
   const setAddOpen = app.setImportOpen;
   // Toss is wired to the operator's own account only (Toss Open API: personal use, no redistribution).
-  const tossOk = auth.me ? auth.me.toss_available || (!auth.enabled && auth.me.mode === "live") : false;
-  const demo = auth.me?.mode === "demo";
+  const tossOk = !!auth.me?.toss_available;
 
   if (port.isLoading || sum.isLoading) return <PageSkeleton />;
   if (port.isError) return <ErrorState error={port.error} retry={() => port.refetch()} />;
@@ -30,7 +29,7 @@ export default function Portfolio() {
     <div className="page-head">
       <div>
         <h1>내 포트폴리오의 가이던스, 지켜지고 있나요?</h1>
-        <p>보유 종목 경영진이 실적발표에서 내놓은 전망을 SEC 공시 실적과 한 줄씩 맞춰 보고, 약속을 얼마나 지키는지 비교합니다.</p>
+        <p>보유 종목 경영진이 실적발표에서 내놓은 전망을 SEC 공시 실적과 한 줄씩 맞춰 보고, 약속을 얼마나 지키는지 비교합니다. 입력한 종목은 이 브라우저에만 저장됩니다.</p>
       </div>
       <div className="head-actions">
         {tossOk ? (<>
@@ -43,7 +42,7 @@ export default function Portfolio() {
         {s && s.missing.length > 0 ? (
           <button className="btn" disabled={app.busy} onClick={() => app.analyze(s.missing)}><Play size={16} />{s.missing.length}개 종목 분석</button>
         ) : hold.length > 0 && (
-          <button className="btn" disabled={app.busy} onClick={() => app.analyze(analyzable)}><RefreshCw size={16} />다시 분석</button>
+          <button className="btn" disabled={app.busy} onClick={() => app.analyze(analyzable, { refresh: true })}><RefreshCw size={16} />다시 분석</button>
         )}
       </div>
     </div>
@@ -58,7 +57,7 @@ export default function Portfolio() {
             : "증권사 앱이나 엑셀에서 보유 종목 표를 복사해 붙여넣으면 미국 종목을 찾아 분석 목록을 만듭니다. 'AAPL 10'처럼 한 줄씩 적어도 됩니다."}>
           {tossOk && <button className="btn primary lg" onClick={() => app.setConnectOpen(true)}><Link2 size={18} />토스증권에서 가져오기</button>}
           <button className={clsx("btn lg", !tossOk && "primary")} onClick={() => setAddOpen(true)}><ClipboardPaste size={18} />보유 종목 붙여넣기</button>
-          {!demo && <button className="btn lg ghost" onClick={() => auth.switchMode(true)}>데모로 먼저 둘러보기</button>}
+          <button className="btn lg ghost" onClick={() => nav("/")}>주요 종목 먼저 보기</button>
         </Empty>
       </>
     );

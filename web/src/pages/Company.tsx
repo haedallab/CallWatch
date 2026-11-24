@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronRight, Download, FileText, Keyboard, Loader2, Pla
 import clsx from "clsx";
 import { api, ApiError, type Guidance, type Report } from "../lib/api";
 import { useApp } from "../lib/store";
+import { useTickers } from "../lib/tickers";
 import { basisKo, C, fmt, fmtRange, fmtSurprise, shortMetric, statusView, type Tone } from "../lib/format";
 import { Empty, ErrorState, findQuote, Highlighted, Kpi, Legend, PageSkeleton, RangeBar, Seg, Skeleton, StatusPill, type Span } from "../components/ui";
 import { CarBars, PriceChart, TrendChart } from "../components/Charts";
@@ -18,10 +19,10 @@ const TONES: { key: Tone; label: string }[] = [
 
 export default function Company() {
   const { ticker } = useParams();
-  const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
+  const tk = useTickers();
   if (!ticker) {
-    const first = port.data?.find((h) => h.analyzable !== false)?.ticker;
-    if (port.isLoading) return <PageSkeleton />;
+    const first = tk.list[0]?.ticker;
+    if (tk.isLoading) return <PageSkeleton />;
     if (first) return <Navigate to={`/company/${first}`} replace />;
     return <Empty title="분석할 종목이 없습니다" body="포트폴리오에서 종목을 추가하거나, ⌘K를 눌러 티커를 입력하면 바로 이동합니다." />;
   }
@@ -32,7 +33,7 @@ function CompanyView({ ticker }: { ticker: string }) {
   const app = useApp();
   const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
-  const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
+  const tk = useTickers();
   const rep = useQuery({ queryKey: ["report", ticker], queryFn: () => api.report(ticker), retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1 });
   const tab = (sp.get("tab") as Tab) || "ledger";
   const setParam = (k: string, v: string | null) => { const n = new URLSearchParams(sp); v === null ? n.delete(k) : n.set(k, v); setSp(n, { replace: true }); };
@@ -47,10 +48,13 @@ function CompanyView({ ticker }: { ticker: string }) {
   const ctx = (
     <div className="ctxbar" role="navigation" aria-label="종목 탐색">
       <div className="crumb">
-        <Link to="/">포트폴리오</Link><ChevronRight size={14} />
+        <Link to={tk.mine.some((m) => m.ticker === ticker) ? "/portfolio" : "/"}>{tk.mine.some((m) => m.ticker === ticker) ? "내 포트폴리오" : "주요 종목"}</Link><ChevronRight size={14} />
         <select value={ticker} aria-label="종목 전환" onChange={(e) => nav(`/company/${e.target.value}?tab=${tab}`)}>
-          {(port.data || []).filter((h) => h.analyzable !== false).map((h) => <option key={h.ticker} value={h.ticker}>{h.ticker} · {(h.name || h.note || "").slice(0, 16)}</option>)}
-          {!(port.data || []).some((h) => h.ticker === ticker) && <option value={ticker}>{ticker}</option>}
+          {(["내 보유 종목", "주요 종목"] as const).map((g) => {
+            const items = tk.list.filter((x) => x.group === g);
+            return items.length ? <optgroup key={g} label={g}>{items.map((x) => <option key={x.ticker} value={x.ticker}>{x.ticker} · {x.name.slice(0, 16)}</option>)}</optgroup> : null;
+          })}
+          {!tk.list.some((x) => x.ticker === ticker) && <option value={ticker}>{ticker}</option>}
         </select>
       </div>
       {rep.data && (
@@ -61,7 +65,7 @@ function CompanyView({ ticker }: { ticker: string }) {
       <div className="ctx-sum">
         {rep.data && <span>신뢰도 <b style={{ color: rep.data.score.score == null ? C.muted : rep.data.score.score >= 80 ? C.within : rep.data.score.score >= 60 ? C.drift : C.bad }}>{rep.data.score.score ?? "–"}</b> · {rep.data.score.style.split(" (")[0]}</span>}
         {rep.data?.mode === "demo" && <span className="tag">데모</span>}
-        <button className="btn sm" disabled={running} onClick={() => app.analyze([ticker])}>
+        <button className="btn sm" disabled={running} onClick={() => app.analyze([ticker], { refresh: true })}>
           {running ? <Loader2 size={14} className="spin" /> : rep.data ? <RefreshCw size={14} /> : <Play size={14} />}{rep.data ? "다시 분석" : "분석하기"}
         </button>
       </div>

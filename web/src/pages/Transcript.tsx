@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileUp, Save, Search, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTickers } from "../lib/tickers";
 import { api } from "../lib/api";
 import { useApp } from "../lib/store";
 import { basisKo, fmtRange, shortMetric } from "../lib/format";
@@ -23,8 +24,7 @@ Chief Executive Officer: Pricing remains stable. We expect adjusted EPS of $1.45
 export default function Transcript() {
   const app = useApp();
   const qc = useQueryClient();
-  const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
-  const opts = (port.data || []).filter((h) => h.analyzable !== false).map((h) => h.ticker);
+  const opts = useTickers().list.map((x) => x.ticker);
   const [ticker, setTicker] = useState("");
   const t = ticker || opts[0] || "";
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -34,7 +34,7 @@ export default function Transcript() {
   const saved = useQuery({ queryKey: ["tr", t, "list"], queryFn: () => api.transcripts(t), enabled: !!t });
   const save = useMutation({
     mutationFn: () => api.saveTranscript(t, date, text),
-    onSuccess: (r) => { toast.success(`원문을 저장했습니다 · 가이던스 ${r.n_guidance}건`, { description: "이 종목을 다시 분석해 실적과 정렬합니다." }); qc.invalidateQueries({ queryKey: ["tr"] }); app.analyze([t]); },
+    onSuccess: (r) => { toast.success(`원문을 저장했습니다 · 가이던스 ${r.n_guidance}건`, { description: "이 종목을 다시 분석해 실적과 정렬합니다." }); qc.invalidateQueries({ queryKey: ["tr"] }); app.analyze([t], { refresh: true }); },
   });
   const readFile = (f?: File) => f && f.text().then((s) => { setText(s); toast.message(`${f.name}을(를) 불러왔습니다.`); });
   const items = ex.data?.items || [];
