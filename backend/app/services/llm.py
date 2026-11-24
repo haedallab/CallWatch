@@ -41,11 +41,13 @@ def _gemini(system: str, user: str, json_mode: bool) -> str:
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
+        # newer Gemini models deprecate sampling parameters (temperature/top_p/top_k)
+        "generationConfig": {"maxOutputTokens": 4096},
     }
     if json_mode:
         body["generationConfig"]["responseMimeType"] = "application/json"
-    r = httpx.post(url, params={"key": settings.gemini_api_key}, json=body, timeout=60)
+    # key in a header, never in the URL (URLs end up in access logs)
+    r = httpx.post(url, headers={"x-goog-api-key": settings.gemini_api_key}, json=body, timeout=90)
     r.raise_for_status()
     cands = r.json().get("candidates", [])
     parts = cands[0].get("content", {}).get("parts", []) if cands else []
