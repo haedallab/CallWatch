@@ -320,3 +320,4 @@ mark.hl sup { font-size: 10.5px; font-weight: 700; color: var(--dark); margin-le
   background: var(--tint); border-color: #CFE0F2; }
 .cta-mine h2 { font-size: 18px; }
 .owner-key summary { cursor: pointer; color: var(--muted); } .owner-key[open] summary { color: var(--ink); }
+.quote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--blue); background: var(--paper); border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.6; }

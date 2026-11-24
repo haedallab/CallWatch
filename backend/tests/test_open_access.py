@@ -60,3 +60,30 @@ def test_toss_needs_owner_key_when_server_holds_toss_credentials(c):
     finally:
         object.__setattr__(s, "toss_client_id", "")
         object.__setattr__(s, "toss_client_secret", "")
+
+
+def test_operator_public_transcript_feeds_everyone_without_full_text(c):
+    s = main.settings
+    object.__setattr__(s, "owner_key", "op-key")
+    text = ("For the full fiscal year 2026 we expect revenue of $4.20 billion to $4.30 billion. " * 5).strip()
+    body = {"ticker": "NBLU", "call_date": "2026-02-01", "text": text, "public": True,
+            "source_url": "https://ir.example.com/q4"}
+    try:
+        assert c.post("/api/transcripts", json=body, headers=B("visitor-5555")).status_code == 403
+        r = c.post("/api/transcripts", json=body, headers=B("operator-0001") | {"X-Owner-Key": "op-key"})
+        assert r.status_code == 200 and r.json()["public"] is True
+        rows = c.get("/api/transcripts/NBLU?include_text=true", headers=B("visitor-6666")).json()
+        pub = [x for x in rows if x["public"]]
+        assert pub and "text" not in pub[0] and pub[0]["source_url"] == "https://ir.example.com/q4"
+        # visitors' analyses stay on the shared key and include the public transcript
+        for _ in range(100):  # the operator upload refreshes the shared report in the background
+            if not main.RUNNING:
+                break
+            time.sleep(0.05)
+        rep = c.post("/api/analyze/NBLU?events=4&use_llm=false&evidence=false&refresh=true",
+                     headers=B("visitor-6666")).json()
+        assert rep["personal"] is False
+        assert any(g.get("transcript_url") == "https://ir.example.com/q4" for g in rep["guidance"])
+        assert c.delete(f"/api/transcripts/{pub[0]['id']}", headers=B("visitor-6666")).status_code == 403
+    finally:
+        object.__setattr__(s, "owner_key", "")

@@ -24,7 +24,7 @@ SCHEMA = [
     """CREATE TABLE IF NOT EXISTS transcripts (
         id TEXT PRIMARY KEY, ticker TEXT NOT NULL, call_date TEXT NOT NULL,
         source TEXT NOT NULL, text TEXT NOT NULL, created_at DOUBLE PRECISION NOT NULL,
-        user_id TEXT NOT NULL DEFAULT 'local')""",
+        user_id TEXT NOT NULL DEFAULT 'local', source_url TEXT NOT NULL DEFAULT '')""",
     """CREATE TABLE IF NOT EXISTS reports (
         ticker TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at DOUBLE PRECISION NOT NULL)""",
 ]
@@ -55,10 +55,11 @@ def cursor() -> Iterator[Any]:
             cur = _conn.cursor()
             for stmt in SCHEMA:
                 cur.execute(stmt)
-            try:  # migrate databases created before multi-user support
-                cur.execute("ALTER TABLE transcripts ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'")
-            except Exception:
-                pass  # column already exists
+            for col in ("user_id TEXT NOT NULL DEFAULT 'local'", "source_url TEXT NOT NULL DEFAULT ''"):
+                try:  # migrate databases created by earlier versions
+                    cur.execute(f"ALTER TABLE transcripts ADD COLUMN {col}")
+                except Exception:
+                    pass  # column already exists
             if not _IS_PG:
                 _conn.commit()
         cur = _conn.cursor()
@@ -131,12 +132,15 @@ def replace_holdings(items: list[dict]) -> None:
 
 # ---- transcripts (owned by a user) -------------------------------------------------
 
-def save_transcript(ticker: str, call_date: str, source: str, text: str, user_id: str = "local") -> str:
+def save_transcript(ticker: str, call_date: str, source: str, text: str, user_id: str = "local",
+                    source_url: str = "") -> str:
     tid = f"{user_id}:{ticker.upper()}:{call_date}:{source}"
     execute(
-        "INSERT INTO transcripts (id, ticker, call_date, source, text, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(id) DO UPDATE SET text = excluded.text, created_at = excluded.created_at",
-        (tid, ticker.upper(), call_date, source, text, time.time(), user_id),
+        "INSERT INTO transcripts (id, ticker, call_date, source, text, created_at, user_id, source_url) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET text = excluded.text, created_at = excluded.created_at, "
+        "source_url = excluded.source_url",
+        (tid, ticker.upper(), call_date, source, text, time.time(), user_id, source_url or ""),
     )
     return tid
 
@@ -145,7 +149,8 @@ def list_transcripts(ticker: str, user_id: str | None = "local") -> list[dict]:
     if user_id is None:
         return []
     return fetchall(
-        "SELECT id, ticker, call_date, source, text FROM transcripts WHERE ticker = ? AND user_id = ? ORDER BY call_date",
+        "SELECT id, ticker, call_date, source, text, source_url, user_id FROM transcripts "
+        "WHERE ticker = ? AND user_id = ? ORDER BY call_date",
         (ticker.upper(), user_id),
     )
 

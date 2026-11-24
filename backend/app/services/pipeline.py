@@ -112,6 +112,7 @@ def analyze(ticker: str, n_events: int = 8, use_llm: bool = True, with_evidence:
                                  source="어닝콜 트랜스크립트", source_url="", use_llm=use_llm)
         for f in found:
             f["transcript_id"] = tr["id"]
+            f["transcript_url"] = tr.get("source_url") or ""
         items += found
         corpus += [{"text": c, "source": "어닝콜 트랜스크립트", "date": tr["call_date"], "url": ""}
                    for c in rag.chunk_text(tr["text"])]

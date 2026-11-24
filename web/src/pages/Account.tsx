@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardPaste, Link2, Loader2, LogIn, LogOut, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "../lib/api";
+import { api, ownerKey } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useApp } from "../lib/store";
 import { Modal, PageSkeleton } from "../components/ui";
@@ -18,6 +18,7 @@ export default function Account() {
   const [confirm, setConfirm] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
+  const [key, setKey] = useState("");
 
   if (me.isLoading) return <PageSkeleton />;
   const m = me.data;
@@ -50,9 +51,22 @@ export default function Account() {
 
       <div className="acct-grid">
         <section className="card col" aria-labelledby="h-who">
-          <div className="card-h"><h2 id="h-who">로그인</h2></div>
+          <div className="card-h"><h2 id="h-who">{a.enabled ? "로그인" : "이 브라우저"}</h2></div>
           {!a.enabled ? (
-            <p className="small muted" style={{ margin: 0 }}>이 서버는 로그인 없이 한 사람이 쓰는 모드로 실행 중입니다. 여러 사람이 쓰려면 서버와 웹에 Supabase 설정을 넣어 주세요.</p>
+            <>
+              <p className="small muted" style={{ margin: 0 }}>가입 없이 쓰는 모드입니다. 내 보유 종목과 올린 원문은 이 브라우저에만 저장됩니다.</p>
+              {m?.operator ? (
+                <div className="row"><span className="tag">운영자</span><button className="btn sm" onClick={() => { ownerKey.set(""); qc.invalidateQueries(); }}>운영자 모드 끄기</button></div>
+              ) : (
+                <details className="xs owner-key">
+                  <summary>운영자 키 입력</summary>
+                  <form className="row" style={{ marginTop: 6 }} onSubmit={(e) => { e.preventDefault(); ownerKey.set(key.trim()); setKey(""); qc.invalidateQueries(); }}>
+                    <input className="input" style={{ width: 220, height: 32 }} type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="OWNER_KEY" autoComplete="off" aria-label="운영자 키" />
+                    <button className="btn sm" type="submit">확인</button>
+                  </form>
+                </details>
+              )}
+            </>
           ) : signedIn ? (
             <>
               <dl className="kv">

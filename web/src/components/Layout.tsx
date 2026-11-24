@@ -164,7 +164,8 @@ export default function Layout() {
         )}
         <ErrorBoundary resetKey={loc.pathname}><Outlet /></ErrorBoundary>
         <div className="foot">CallWatch는 공시 정보를 정리·대조하는 리서치 보조 도구이며 투자 권유가 아닙니다. 판정은 SEC XBRL(GAAP) 수치 기준이며,
-          중요한 판단 전에는 공시 원문을 확인하세요. 토스증권 연동은 조회 전용이며 주문 기능을 쓰지 않습니다.</div>
+          중요한 판단 전에는 공시 원문을 확인하세요. 토스증권 연동은 조회 전용이며 주문 기능을 쓰지 않습니다.
+          {" "}<NavLink to="/account">내 데이터 관리</NavLink></div>
       </main>
 
       {app.paletteOpen && <CommandPalette onClose={() => app.setPaletteOpen(false)} switchMode={switchMode} mode={mode} />}

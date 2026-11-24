@@ -12,7 +12,7 @@ export interface Guidance {
   metric: string; metric_label: string; basis: "GAAP" | "non-GAAP" | "unspecified";
   kind: "level" | "ratio" | "growth_yoy"; low: number; high: number; mid: number; unit: "USD" | "%" | "USD/share";
   period_type: string; quarter?: number | null; fiscal_year?: number | null; timeframe_text: string; timeframe_assumed: boolean;
-  quote: string; span: [number, number]; extractor: string;
+  quote: string; span: [number, number]; extractor: string; transcript_url?: string;
   period?: Period | null; status: Status; status_ko: string; actual?: number; surprise?: number; surprise_unit?: "%" | "pp";
   range_position?: number | null; favorable?: boolean | null; kept?: boolean; basis_mismatch?: boolean; notes: string[];
   actual_source?: { concept: string; form: string; accn: string; filed: string; period_end: string; derived: boolean };
@@ -54,7 +54,7 @@ export interface BrokerStatus {
 export interface Health { status: string; mode: "live" | "demo"; sec_reachable: boolean | null; llm: string; llm_enabled: boolean; auth_enabled?: boolean; default_mode?: "live" | "demo" }
 export interface Me {
   auth_enabled: boolean; signed_in: boolean; user: { uid: string; email: string } | null; uid: string | null;
-  mode: "live" | "demo"; owner: boolean; toss_available: boolean; featured: string[];
+  mode: "live" | "demo"; owner: boolean; operator: boolean; toss_available: boolean; featured: string[];
   usage: { today: number; limit: number; qa_today: number; qa_limit: number };
 }
 export interface Featured extends Summary {
@@ -128,10 +128,10 @@ export const api = {
   document: (url: string) => request<{ url: string; text: string }>("GET", "/api/document", { params: { url } }),
   extract: (text: string, ticker: string, event_date: string, use_llm: boolean) =>
     request<{ items: Guidance[]; llm_used: boolean; n: number }>("POST", "/api/extract", { body: { text, ticker, event_date, use_llm } }),
-  saveTranscript: (ticker: string, call_date: string, text: string) =>
-    request<{ id: string; n_guidance: number }>("POST", "/api/transcripts", { body: { ticker, call_date, text } }),
+  saveTranscript: (ticker: string, call_date: string, text: string, opts: { public?: boolean; source_url?: string } = {}) =>
+    request<{ id: string; n_guidance: number; public: boolean; hint: string }>("POST", "/api/transcripts", { body: { ticker, call_date, text, ...opts } }),
   transcripts: (t: string, include_text = false) =>
-    request<{ id: string; call_date: string; source: string; chars: number; preview: string; text?: string }[]>("GET", `/api/transcripts/${t}`, { params: { include_text } }),
+    request<{ id: string; call_date: string; source: string; chars: number; preview: string; text?: string; public: boolean; source_url: string }[]>("GET", `/api/transcripts/${t}`, { params: { include_text } }),
   deleteTranscript: (id: string) => request("DELETE", `/api/transcripts/${encodeURIComponent(id)}`),
   qa: (ticker: string, question: string) => request<QAResponse>("POST", "/api/qa", { body: { ticker, question } }),
 };
