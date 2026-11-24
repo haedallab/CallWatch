@@ -46,7 +46,14 @@ _PAST_ONLY = re.compile(
     r"contributed|totaled|totalled|generated|included|recorded|previously disclosed|compared (?:with|to)|"
     r"for the (?:quarter|year|three months|six months|nine months|twelve months|fiscal year) ended|year[- ]over[- ]year|"
     r"up \d|down \d)\b", re.I)
-_TABLE_NUM = re.compile(r"\$\s?\(?\d|\b\d{1,3}(?:,\d{3})+\b|\b\d+\.\d+\b")
+_TABLE_NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _table_row(s: str) -> bool:
+    """Financial-statement rows: many numbers, few words."""
+    nums = len(_TABLE_NUM.findall(s))
+    words = len(re.findall(r"[A-Za-z]{3,}", s))
+    return s.count("—") >= 2 or (nums >= 5 and words < nums * 1.5)
 
 _ORD = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
 _Q_WORD = re.compile(r"\b(first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:fiscal\s+)?quarter(?:\s+of\s+(?:fiscal\s+(?:year\s+)?)?(?:FY)?\s*'?(\d{2,4}))?", re.I)
@@ -233,7 +240,7 @@ def extract_rules(text: str, default_tf: dict | None = None) -> list[dict]:
             continue
         if _PAST_ONLY.search(s) and not _FWD.search(s):
             continue
-        if len(_TABLE_NUM.findall(s)) > 4 or s.count("—") >= 2:  # financial-statement rows, not guidance
+        if _table_row(s):  # financial-statement rows, not guidance
             continue
         if re.search(r"par value|shares authorized|issued and outstanding|weighted[- ]average shares", s, re.I):
             continue
