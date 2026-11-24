@@ -27,6 +27,7 @@ from .services.pipeline import LiveSource, analyze
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("callwatch")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # per-request lines are noise (and may carry query strings)
 
 TAGS = [
     {"name": "system", "description": "상태·메타 정보"},
