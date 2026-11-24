@@ -36,8 +36,13 @@ def _strip_json(raw: str):
         return None
 
 
+GEMINI_FALLBACKS = ["gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
+_RETRY = {429, 500, 502, 503, 504}
+_dead: dict[str, float] = {}  # model -> time it last failed with a retryable/unknown-model error
+
+
 def _gemini(system: str, user: str, json_mode: bool) -> str:
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent")
+    """Try the configured model, then lighter fallbacks; overloaded models (503) are skipped for 10 minutes."""
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -46,12 +51,29 @@ def _gemini(system: str, user: str, json_mode: bool) -> str:
     }
     if json_mode:
         body["generationConfig"]["responseMimeType"] = "application/json"
-    # key in a header, never in the URL (URLs end up in access logs)
-    r = httpx.post(url, headers={"x-goog-api-key": settings.gemini_api_key}, json=body, timeout=90)
-    r.raise_for_status()
-    cands = r.json().get("candidates", [])
-    parts = cands[0].get("content", {}).get("parts", []) if cands else []
-    return "".join(p.get("text", "") for p in parts)
+    models = [settings.gemini_model] + [m for m in GEMINI_FALLBACKS if m != settings.gemini_model]
+    live = [m for m in models if time.time() - _dead.get(m, 0) > 600] or models
+    last = None
+    for model in live:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in range(2):
+            # key in a header, never in the URL (URLs end up in access logs)
+            r = httpx.post(url, headers={"x-goog-api-key": settings.gemini_api_key}, json=body, timeout=90)
+            if r.status_code < 400:
+                cands = r.json().get("candidates", [])
+                parts = cands[0].get("content", {}).get("parts", []) if cands else []
+                STATS["model"] = model
+                return "".join(p.get("text", "") for p in parts)
+            last = f"{model}: HTTP {r.status_code} {r.text[:160]}"
+            if r.status_code in _RETRY and attempt == 0:
+                time.sleep(1.5)
+                continue
+            break
+        if r.status_code in _RETRY or r.status_code == 404:
+            _dead[model] = time.time()
+            continue
+        break  # 400/401/403: a request or key problem, other models will not help
+    raise RuntimeError(last or "Gemini call failed")
 
 
 def _openai_like(base: str, key: str, model: str, system: str, user: str, json_mode: bool) -> str:
