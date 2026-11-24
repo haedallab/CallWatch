@@ -1,0 +1,35 @@
+# Render Blueprint - FastAPI backend (Swagger UI at /docs)
+services:
+  - type: web
+    name: callwatch-api
+    runtime: python
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: SEC_USER_AGENT          # "Name contact@email" (SEC fair-access policy)
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: TOSS_CLIENT_ID          # Toss Securities Open API (read-only use)
+        sync: false
+      - key: TOSS_CLIENT_SECRET
+        sync: false
+      - key: SUPABASE_URL            # turns on sign-up / per-user data
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY   # optional, for full account deletion
+        sync: false
+      - key: OWNER_EMAILS            # your login email: the only account allowed to use Toss
+        sync: false
+      - key: DAILY_ANALYSIS_LIMIT
+        value: "30"
+      - key: DATABASE_URL            # Supabase Postgres connection string (keeps data across restarts)
+        sync: false
+      - key: CORS_ORIGINS            # your Vercel URL, e.g. https://callwatch.vercel.app
+        sync: false
+      - key: DATA_DIR
+        value: /tmp/callwatch
