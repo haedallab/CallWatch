@@ -80,8 +80,10 @@ def bind(authorization: str | None, data_mode: str | None, client_id: str | None
     if authorization and authorization.lower().startswith("bearer ") and settings.auth_enabled:
         user = verify(authorization.split(" ", 1)[1].strip())
     _user.set(user)
-    if data_mode in ("demo", "live"):
+    if data_mode == "live" or (data_mode == "demo" and settings.allow_demo):
         _mode.set(data_mode)
+    elif not settings.allow_demo:
+        _mode.set("live")
     cid = (client_id or "")[:64]
     _client.set(cid if re.fullmatch(r"[A-Za-z0-9-]{8,64}", cid or "") else "")
     _owner_key.set(owner_key or "")

@@ -2,12 +2,12 @@ import { useState } from "react";
 import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ClipboardPaste, Eye, FlaskConical, LineChart, Link2, Play, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardPaste, Eye, LineChart, Link2, Play, Sparkles } from "lucide-react";
 import { api } from "../lib/api";
 import { useApp } from "../lib/store";
 import { Overlay } from "./ui";
 
-export default function CommandPalette({ onClose, switchMode, mode }: { onClose: () => void; switchMode: (d: boolean) => void; mode?: string }) {
+export default function CommandPalette({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const app = useApp();
   const [q, setQ] = useState("");
@@ -50,7 +50,6 @@ export default function CommandPalette({ onClose, switchMode, mode }: { onClose:
             <Command.Item onSelect={() => go(() => app.setImportOpen(true))}><ClipboardPaste size={16} />보유 종목 붙여넣기 · 편집</Command.Item>
             <Command.Item onSelect={() => go(() => app.setConnectOpen(true))}><Link2 size={16} />토스증권 보유종목 가져오기</Command.Item>
             <Command.Item onSelect={() => go(() => app.analyze(tickers.map((t) => t.ticker)))} disabled={!tickers.length}><Play size={16} />보유 종목 전체 분석</Command.Item>
-            <Command.Item onSelect={() => go(() => switchMode(mode !== "demo"))}><FlaskConical size={16} />{mode === "demo" ? "실데이터로 전환" : "데모 데이터로 전환"}</Command.Item>
             <Command.Item onSelect={() => go(() => app.setMasked(!app.masked))}><Eye size={16} />{app.masked ? "금액 보이기" : "금액 가리기"}</Command.Item>
             <Command.Item onSelect={() => go(() => app.setTour(true))}><Sparkles size={16} />화면 둘러보기 시작</Command.Item>
           </Command.Group>

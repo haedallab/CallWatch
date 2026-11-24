@@ -47,7 +47,7 @@ export default function Present() {
             <div><span>기준일</span><b>{today}</b></div>
             <div><span>분석 종목</span><b>{s.n_scored}개 · 가이던스 {feed.length}건</b></div>
             <div><span>{useMine ? "비중 가중 신뢰도" : "평균 신뢰도"}</span><b>{s.weighted_score?.toFixed(0) ?? "–"}점</b></div>
-            <div><span>데이터</span><b>{health.data?.mode === "demo" ? "데모 (가상 기업)" : "SEC EDGAR 공시 · 주가"}</b></div>
+            <div><span>데이터</span><b>SEC EDGAR 공시 · 주가</b></div>
           </div>
         </div>) },
       { key: "overview", label: "한눈에 보기", body: (

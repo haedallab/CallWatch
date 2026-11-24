@@ -22,7 +22,7 @@ function store(key: string) {
   };
 }
 
-/** Anonymous per-browser id: gives visitors their own scratch space in demo mode. */
+/** Anonymous per-browser id: gives visitors their own holdings without signing up. */
 export const clientId = (() => {
   const s = store("cw.cid");
   let v = s.get();
@@ -35,5 +35,7 @@ export const clientId = (() => {
 
 /** Data mode is chosen per browser (not server-wide): "demo" | "live" | null (= server default). */
 export const dataMode = store("cw.mode") as { get: () => "demo" | "live" | null; set: (v: "demo" | "live" | null) => void };
+// demo data was retired: forget an old "demo" choice so every browser sees real data
+if (dataMode.get() === "demo") dataMode.set(null);
 /** Remember what to do after a magic-link round trip (e.g. switch to live data). */
 export const afterLogin = store("cw.afterLogin");
