@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import auth, db
 from .config import settings
-from .services import demo, edgar, importer, guidance, llm, rag, scoring, toss, transcripts
+from .services import edgar, importer, guidance, llm, rag, scoring, toss, transcripts
 from .services.align import STATUS_KO
 from .services.metrics import fmt, fmt_range, public_metrics
 from .services.pipeline import LiveSource, analyze
@@ -42,7 +42,7 @@ TAGS = [
 async def request_context(
     request: Request,
     authorization: str | None = Header(None, include_in_schema=False),
-    x_data_mode: str | None = Header(None, description="demo | live (브라우저마다 따로 선택)"),
+    x_data_mode: str | None = Header(None, include_in_schema=False),
     x_client_id: str | None = Header(None, include_in_schema=False),
     x_owner_key: str | None = Header(None, include_in_schema=False),
 ):
@@ -69,7 +69,7 @@ app = FastAPI(
                 "정렬(Align)해 경영진 가이던스 신뢰도를 보여주는 API. 투자 권유가 아닙니다.\n\n"
                 "**가입 없이 사용** — 주요 종목(`/api/featured`)은 서버가 미리 분석해 누구나 봅니다. 브라우저마다 "
                 "`X-Client-Id`로 보유 종목을 따로 저장하고, 새 종목 분석은 하루 횟수를 제한합니다. "
-                "`X-Data-Mode: demo|live`로 데이터 모드를 고르며, 로그인(`Authorization: Bearer`, Supabase)은 선택입니다. "
+                "로그인(`Authorization: Bearer`, Supabase)은 선택입니다. "
                 "공시 기반 분석 결과는 모두가 공유하는 캐시이고, 토스증권 연동은 운영자에게만 열려 있습니다.",
     openapi_tags=TAGS,
     dependencies=[Depends(request_context)],
@@ -79,12 +79,9 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_me
 STATE = {"sec_ok": None, "sec_checked": 0.0}
 
 
-def is_demo() -> bool:
-    return auth.mode() == "demo"
-
-
-def source(demo_mode: bool | None = None):
-    return demo.DemoSource if (is_demo() if demo_mode is None else demo_mode) else LiveSource
+def source():
+    """Real data only: SEC EDGAR + price providers + stored transcripts."""
+    return LiveSource
 
 
 def mode() -> str:
@@ -96,8 +93,6 @@ def owner() -> bool:
 
 
 def require_owner() -> bool:
-    if is_demo():  # the fictional demo account: anyone may try the flow
-        return True
     if not auth.is_owner():
         if settings.auth_enabled:
             raise HTTPException(403, "토스증권 연동은 서비스 운영자 계정에서만 켜져 있습니다. 보유 종목은 직접 입력해 주세요.")
@@ -166,10 +161,6 @@ class PreviewIn(BaseModel):
     items: list[Holding] | None = Field(None, description="직접 입력한 종목 목록")
 
 
-class ModeIn(BaseModel):
-    demo: bool
-
-
 class SyncIn(BaseModel):
     account_seq: int | None = Field(None, description="토스증권 accountSeq (비우면 첫 종합매매 계좌)")
 
@@ -212,7 +203,7 @@ class QAIn(BaseModel):
 # ---------------------------------------------------------------------------------------
 @app.get("/health", tags=["system"], summary="서버 상태")
 def health():
-    if not is_demo() and time.time() - STATE["sec_checked"] > 300:
+    if time.time() - STATE["sec_checked"] > 300:
         try:
             edgar.ticker_map()
             STATE["sec_ok"] = True
@@ -221,13 +212,7 @@ def health():
         STATE["sec_checked"] = time.time()
     return {"status": "ok", "mode": mode(), "sec_reachable": STATE["sec_ok"], "llm": settings.llm_label,
             "llm_enabled": llm.enabled(), "llm_stats": llm.STATS, "auth_enabled": settings.auth_enabled,
-            "default_mode": "demo" if settings.demo_mode else "live", "demo_available": settings.allow_demo}
-
-
-@app.post("/api/mode", tags=["system"], summary="(호환용) 모드 확인 — 모드는 요청마다 X-Data-Mode 헤더로 보냅니다")
-def set_mode(body: ModeIn):
-    return {"mode": "demo" if body.demo else "live",
-            "hint": "모드는 서버 전역이 아니라 요청별입니다. 이후 요청에 X-Data-Mode 헤더를 넣어 주세요."}
+            "default_mode": "live"}
 
 
 # ---------------------------------------------------------------------------------------
@@ -240,7 +225,7 @@ def me():
     today = date.today().isoformat()
     return {"auth_enabled": settings.auth_enabled, "signed_in": bool(u),
             "user": u, "uid": uid, "mode": mode(), "owner": auth.is_owner(), "operator": auth.is_verified_owner(),
-            "toss_available": is_demo() or (auth.is_owner() and toss.configured()),
+            "toss_available": auth.is_owner() and toss.configured(),
             "featured": _featured(),
             "usage": {"today": db.count_usage(uid, today) if uid else 0, "limit": _limit(),
                       "qa_today": db.count_usage(f"qa:{uid}", today) if uid else 0, "qa_limit": settings.qa_daily_limit}}
@@ -289,7 +274,7 @@ def meta():
 @app.get("/api/search", tags=["portfolio"], summary="티커/회사명 검색")
 def search(q: str = Query(..., min_length=1, max_length=40)):
     try:
-        return demo.search(q) if is_demo() else edgar.search(q)
+        return edgar.search(q)
     except edgar.EdgarError as e:
         _err(e, 503)
 
@@ -304,8 +289,6 @@ def _hkey(uid: str) -> str:
 def _holdings() -> list[dict]:
     uid = auth.uid()
     h = db.cache_get(_hkey(uid)) if uid else None
-    if h is None and is_demo():
-        h = demo.DEMO_PORTFOLIO
     return h or []
 
 
@@ -318,7 +301,7 @@ def get_portfolio():
 
 
 def _check(rows: list[dict]) -> list[dict]:
-    """Resolve each row against SEC (or demo data). Korean codes are kept but marked non-analyzable."""
+    """Resolve each row against SEC. Korean codes are kept but marked non-analyzable."""
     out = []
     for r in rows:
         t = r["ticker"].upper()
@@ -421,7 +404,7 @@ WARM: dict[str, str] = {}             # featured ticker -> last warm-up error
 
 
 def _featured() -> list[str]:
-    return list(demo.COMPANIES) if is_demo() else settings.featured
+    return settings.featured
 
 
 @app.get("/api/featured", tags=["portfolio"], summary="주요 종목 요약 (가입 없이 공개, 서버가 미리 분석)")
@@ -437,7 +420,7 @@ def featured():
     for t in ts:
         r = db.get_report(f"{mode()}:{t}")
         names[t] = r["name"] if r else None
-        if not names[t] and not is_demo():
+        if not names[t]:
             try:
                 names[t] = edgar.resolve(t).get("title")
             except Exception:
@@ -455,13 +438,10 @@ def broker_status():
     base = {"provider": "toss", "mode": mode(), "configured": toss.configured(), "owner": is_owner,
             "owner_only": True, "owner_key_required": bool(settings.owner_key),
             "last_sync": db.cache_get(f"broker:last:{mode()}:{uid}") if uid else None}
-    if not is_demo() and not is_owner:
+    if not is_owner:
         return base | {"connected": None, "available": False,
                        "error": "토스증권 연동은 서비스 운영자에게만 켜져 있습니다.",
                        "hint": "토스증권 Open API는 본인 계좌의 본인 이용만 허용합니다. 보유 종목은 직접 입력하거나 붙여넣어 주세요."}
-    if is_demo():
-        return base | {"connected": True, "demo": True,
-                       "accounts": [{"accountSeq": 1, "accountNo": "123•••••901", "accountType": "BROKERAGE"}]}
     if not toss.configured():
         return base | {"connected": False, "error": "서버에 토스증권 API 키가 없습니다.",
                        "hint": "Render 환경변수에 TOSS_CLIENT_ID, TOSS_CLIENT_SECRET을 넣고 서버 공인 IP를 토스증권에 등록하세요."}
@@ -476,14 +456,11 @@ def broker_status():
 @app.post("/api/broker/toss/sync", tags=["broker"], summary="토스증권 보유종목을 포트폴리오로 가져오기")
 def broker_sync(body: SyncIn, _: bool = Depends(require_owner), uid: str = Depends(require_user)):
     try:
-        if is_demo():
-            raw, fx, seq = toss.demo_holdings(), 1420.0, 1
-        else:
-            accts = toss.accounts()
-            if not accts:
-                raise HTTPException(404, "조회 가능한 종합매매 계좌가 없습니다.")
-            seq = body.account_seq or (int(settings.toss_account_seq) if settings.toss_account_seq else accts[0]["accountSeq"])
-            raw, fx = toss.holdings_raw(seq), toss.usd_krw()
+        accts = toss.accounts()
+        if not accts:
+            raise HTTPException(404, "조회 가능한 종합매매 계좌가 없습니다.")
+        seq = body.account_seq or (int(settings.toss_account_seq) if settings.toss_account_seq else accts[0]["accountSeq"])
+        raw, fx = toss.holdings_raw(seq), toss.usd_krw()
     except toss.TossError as e:
         raise HTTPException(e.status if e.status < 500 else 502, {"message": str(e), "code": e.code, "hint": e.hint}) from e
     norm = toss.normalize(raw, fx)
@@ -494,7 +471,7 @@ def broker_sync(body: SyncIn, _: bool = Depends(require_owner), uid: str = Depen
             try:
                 source().resolve(r["ticker"])
             except edgar.EdgarError as e:
-                ok = "찾지 못했" not in str(e) and "데모 모드" not in str(e)  # keep if SEC merely unreachable
+                ok = "찾지 못했" not in str(e)  # keep if SEC merely unreachable
         rows.append(r | {"analyzable": ok, "source": "toss", "note": r["name"][:40]})
     db.cache_set(_hkey(uid), rows)
     last = {"at": time.strftime("%Y-%m-%d %H:%M"), "account_seq": seq, "n": len(rows),
@@ -531,7 +508,7 @@ def _warm_loop():
 
 
 def start_warm():
-    if settings.warm_featured and not settings.demo_mode and settings.featured:
+    if settings.warm_featured and settings.featured:
         threading.Thread(target=_warm_loop, daemon=True, name="warm-featured").start()
 def _limit() -> int:
     if auth.is_verified_owner():
@@ -543,7 +520,7 @@ def _charge(ticker: str) -> str | None:
     """Live analyses hit SEC and the LLM. Featured stocks are free; anything else counts against a daily
     limit per browser/account and per IP (owners unlimited)."""
     uid = auth.uid()
-    if is_demo() or auth.is_verified_owner():
+    if auth.is_verified_owner():
         return uid
     if settings.auth_enabled and not uid:
         raise HTTPException(401, "실데이터 분석은 로그인 후 이용할 수 있습니다.")
@@ -575,7 +552,7 @@ def run_analysis(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bool
         cached = db.get_report(key)
         if cached and cached.get("n_events_requested") == events:
             return cached
-    if refresh and not auth.is_verified_owner() and _fresh(key) and not is_demo():
+    if refresh and not auth.is_verified_owner() and _fresh(key):
         cached = db.get_report(key)
         if cached:
             return cached  # recently refreshed; avoid hammering SEC
@@ -588,7 +565,7 @@ def run_analysis(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bool
                       user_id=uid, store_key=key)
     except edgar.EdgarError as e:
         msg = str(e)
-        _err(e, 404 if "찾지 못했" in msg or "데모 모드" in msg else 503)
+        _err(e, 404 if "찾지 못했" in msg else 503)
     finally:
         RUNNING.pop(key.upper(), None)
     rep["n_events_requested"] = events
@@ -604,7 +581,7 @@ def analyze_stream(ticker: str, events: int = Query(8, ge=2, le=16), use_llm: bo
     key = report_key(ticker)
     src = source()
     cached = db.get_report(key)
-    reuse = cached and (not refresh or (not auth.is_verified_owner() and not is_demo() and _fresh(key)))
+    reuse = cached and (not refresh or (not auth.is_verified_owner() and _fresh(key)))
     if not reuse and key.upper() in RUNNING:
         raise HTTPException(409, "지금 이 종목을 분석하고 있습니다. 잠시 후 결과가 나타납니다.")
     uid = None if reuse else _charge(ticker)  # resolve before the worker thread: context vars do not cross threads
@@ -669,8 +646,6 @@ def extract(body: ExtractIn):
 @app.get("/api/document", tags=["analysis"], summary="공시/보도자료 원문 텍스트 (sec.gov 한정)")
 def document(url: str):
     try:
-        if url.startswith("demo://"):
-            return {"url": url, "text": demo.document(url)}
         if not url.startswith(("https://www.sec.gov/", "https://data.sec.gov/")):
             raise HTTPException(400, "sec.gov 문서만 조회할 수 있습니다.")
         return {"url": url, "text": edgar.document_text(url)}
@@ -726,14 +701,14 @@ def transcript_from_url(body: TranscriptUrlIn, refresh: bool = True):
 
 def _refresh_shared(ticker: str):
     """Recompute the shared report after the operator adds a public transcript."""
-    key, demo_mode, use_llm = f"{mode()}:{ticker}", is_demo(), llm.enabled()
+    key, use_llm = f"{mode()}:{ticker}", llm.enabled()
 
     def work():
         if key.upper() in RUNNING:
             return
         RUNNING[key.upper()] = time.time()
         try:
-            rep = analyze(ticker, n_events=8, use_llm=use_llm, src=source(demo_mode), store_key=key)
+            rep = analyze(ticker, n_events=8, use_llm=use_llm, src=source(), store_key=key)
             rep["n_events_requested"] = 8
             db.save_report(key, rep)
         except Exception as e:
@@ -747,7 +722,7 @@ def _refresh_shared(ticker: str):
 @app.get("/api/transcripts/{ticker}", tags=["transcripts"], summary="트랜스크립트 목록 (공용 샘플 + 내가 올린 원문)")
 def list_transcripts(ticker: str, include_text: bool = False):
     uid = auth.uid()
-    rows = demo.DemoSource.transcripts(ticker, uid) if is_demo() else transcripts.all_transcripts(ticker, uid)
+    rows = transcripts.all_transcripts(ticker, uid)
     out = []
     for r in rows:
         public = r.get("user_id") == transcripts.PUBLIC
@@ -859,7 +834,7 @@ def qa(body: QAIn):
     corpus = db.cache_get(f"corpus:{key.lower()}") or []
     if not corpus:
         raise HTTPException(404, "먼저 이 종목을 분석해 주세요 (문서 색인이 없습니다).")
-    if llm.enabled() and not is_demo() and not auth.is_verified_owner():
+    if llm.enabled() and not auth.is_verified_owner():
         day, who = date.today().isoformat(), f"qa:{auth.uid() or 'ip:' + auth.ip()}"
         if db.count_usage(who, day) >= settings.qa_daily_limit:
             raise HTTPException(429, f"오늘 AI 질문 한도({settings.qa_daily_limit}회)를 모두 썼습니다. 내일 다시 이용해 주세요.")

@@ -21,7 +21,7 @@ STATS = {"calls": 0, "cache_hits": 0, "errors": 0, "last_latency_ms": None}
 
 
 def enabled() -> bool:
-    return settings.llm_enabled and not settings.demo_mode
+    return settings.llm_enabled
 
 
 def _strip_json(raw: str):
