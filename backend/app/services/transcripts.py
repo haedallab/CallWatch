@@ -69,3 +69,37 @@ def split_sections(text: str) -> list[tuple[str, int, int]]:
     if not m:
         return [("prepared", 0, len(text))]
     return [("prepared", 0, m.start()), ("qa", m.start(), len(text))]
+
+
+# ---- operator import from a company IR page / PDF ---------------------------------------
+_PRIVATE = ("localhost", "127.", "10.", "192.168.", "169.254.", "0.", "[::1]", "metadata")
+
+
+def fetch_text(url: str, max_bytes: int = 15_000_000) -> str:
+    """Download a public transcript (PDF or HTML) and return plain text. Operator-only caller."""
+    import io
+    from urllib.parse import urlparse
+
+    from bs4 import BeautifulSoup
+
+    host = (urlparse(url).hostname or "").lower()
+    if not url.startswith("https://") or not host or host.startswith(_PRIVATE) or host.endswith(".internal"):
+        raise ValueError("공개 https 주소만 가져올 수 있습니다.")
+    r = httpx.get(url, timeout=40, follow_redirects=True,
+                  headers={"User-Agent": "Mozilla/5.0 (CallWatch transcript import)"})
+    r.raise_for_status()
+    if len(r.content) > max_bytes:
+        raise ValueError("파일이 너무 큽니다.")
+    ctype = r.headers.get("content-type", "")
+    if "pdf" in ctype or r.content[:4] == b"%PDF":
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(r.content))
+        text = "\n".join((p.extract_text() or "") for p in reader.pages)
+    else:
+        soup = BeautifulSoup(r.text, "html.parser")
+        for t in soup(["script", "style", "nav", "header", "footer"]):
+            t.decompose()
+        text = soup.get_text("\n")
+    text = re.sub(r"[ \t\xa0]+", " ", text)
+    return re.sub(r"\n\s*\n+", "\n\n", text).strip()
