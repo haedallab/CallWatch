@@ -13,6 +13,11 @@ from .metrics import DIRECTION, GAAP_SENSITIVE, METRICS
 # tolerance for POINT guidance (ranges use their own bounds)
 POINT_TOL = {"amount": 0.02, "per_share": 0.01, "ratio": 0.5, "growth_yoy": 1.0}
 
+# Companies whose capex guidance is defined including finance leases, while XBRL capex
+# (PaymentsToAcquirePropertyPlantAndEquipment) is cash spent only. Microsoft states this in every call:
+# "capital expenditures including finance leases".
+CAPEX_INCLUDES_LEASES = {"MSFT"}
+
 STATUS_KO = {"above": "상회", "within": "부합", "below": "하회", "pending": "대기", "unverifiable": "검증불가"}
 
 
@@ -214,7 +219,8 @@ def align_item(item: dict, cal: FiscalCalendar, act: Actuals, today: date | None
     if item["basis"] == "non-GAAP" and item["metric"] in GAAP_SENSITIVE:
         notes.append("Non-GAAP 가이던스를 GAAP(XBRL) 실적과 비교 - 참고용, 신뢰도 점수에서 제외")
     period = resolve_period(item, cal)
-    if item["metric"] == "capex" and re.search(r"financ\w* leases?|including leases|lease", item.get("quote", ""), re.I):
+    if item["metric"] == "capex" and (item.get("ticker", "").upper() in CAPEX_INCLUDES_LEASES
+                                      or re.search(r"financ\w* leases?|including leases|lease", item.get("quote", ""), re.I)):
         notes.append("리스(finance lease) 포함 설비투자 — XBRL의 현금 설비투자와 정의가 달라 참고로만 표시")
         return {"period": period, "notes": notes, "basis_mismatch": False,
                 "status": "unverifiable", "status_ko": STATUS_KO["unverifiable"]}
