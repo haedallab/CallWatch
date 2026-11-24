@@ -188,7 +188,9 @@ def verdict(item: dict, actual: float) -> dict:
             tol = max(0.01, abs(mid) * 0.01)
     is_range = high - low > 1e-9 * max(abs(mid), 1)
     if is_range:
-        status = "above" if actual > high else "below" if actual < low else "within"
+        # ranges are quoted rounded ("$18.0 to $18.1 billion"): allow half a rounding step at the edges
+        edge = 0.0 if kind == "growth_yoy" or mkind != "amount" else 0.003 * abs(mid)
+        status = "above" if actual > high + edge else "below" if actual < low - edge else "within"
         pos = (actual - low) / (high - low)
     else:
         status = "above" if actual > mid + tol else "below" if actual < mid - tol else "within"
