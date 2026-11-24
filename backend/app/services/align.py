@@ -210,6 +210,10 @@ def align_item(item: dict, cal: FiscalCalendar, act: Actuals, today: date | None
     if item["basis"] == "non-GAAP" and item["metric"] in GAAP_SENSITIVE:
         notes.append("Non-GAAP 가이던스를 GAAP(XBRL) 실적과 비교 - 참고용, 신뢰도 점수에서 제외")
     period = resolve_period(item, cal)
+    if item.get("segment"):
+        notes.append(f"사업부문({item['segment']}) 가이던스 — 회사 전체 XBRL 실적과 1:1 비교할 수 없어 참고로만 표시")
+        return {"period": period, "notes": notes, "basis_mismatch": False,
+                "status": "unverifiable", "status_ko": STATUS_KO["unverifiable"]}
     base = {"period": period, "notes": notes, "basis_mismatch": item["basis"] == "non-GAAP"
             and item["metric"] in GAAP_SENSITIVE}
     if period is None:
