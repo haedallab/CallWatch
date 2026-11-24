@@ -215,6 +215,26 @@ def metric_mentions(s: str) -> list[tuple[int, int, str]]:
     return sorted(taken)
 
 
+_NOT_SEGMENT = {"Total", "Our", "The", "We", "GAAP", "Non", "Company", "Consolidated", "Net", "Gross", "Operating",
+                "Full", "Fiscal", "Quarterly", "Annual", "First", "Second", "Third", "Fourth", "Q1", "Q2", "Q3", "Q4",
+                "Group", "Overall", "Firmwide", "Diluted", "Adjusted", "Core", "Worldwide", "Revenue", "Revenues",
+                "This", "That", "In", "For", "And", "As", "On", "At", "To", "With", "Expect", "Expected"}
+_SEG = re.compile(r"((?:[A-Z][A-Za-z&+\-]*\s+){1,3})(?=(?:segment\s+)?(?:revenue|revenues|sales|operating income|"
+                  r"operating margin|gross margin|margin|net interest income)\b)")
+
+
+def segment_of(quote: str) -> str | None:
+    """'Intelligent Cloud revenue', 'Data Center revenue', 'Services segment sales' -> the segment name."""
+    for m in _SEG.finditer(quote):
+        words = [w for w in m.group(1).split() if w not in _NOT_SEGMENT and not w.isupper() or len(w) > 4]
+        words = [w for w in words if w not in _NOT_SEGMENT]
+        if words:
+            return " ".join(words)
+    if re.search(r"\bsegment\b|\bbusiness unit\b", quote, re.I):
+        return "segment"
+    return None
+
+
 def _item_id(*parts) -> str:
     return hashlib.sha1("|".join(str(p) for p in parts).encode()).hexdigest()[:12]
 
@@ -397,6 +417,9 @@ def extract(text: str, *, ticker: str, event_date: str, source: str, source_url:
         items = dedupe(items)
     for it in items:
         it.update({"ticker": ticker.upper(), "event_date": event_date, "source": source, "source_url": source_url})
+        seg = segment_of(it.get("quote") or "")
+        if seg:
+            it["segment"] = seg
         it["id"] = _item_id(ticker, event_date, source, it["metric"], it["basis"], it["period_type"],
                             it.get("quarter"), round(it["mid"], 4))
     return items

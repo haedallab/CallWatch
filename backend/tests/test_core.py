@@ -145,3 +145,12 @@ def test_real_press_release_noise_is_not_guidance():
         assert guidance.extract_rules("Outlook\n" + s, {"period_type": "Q", "from_heading": True}) == [], s
     g = guidance.extract_rules("we expect to invest approximately $75 billion in capital expenditures in 2025.")
     assert g and g[0]["metric"] == "capex" and g[0]["period_type"] == "FY" and g[0]["fiscal_year"] == 2025
+
+
+def test_segment_guidance_is_reference_only():
+    from app.services.guidance import segment_of
+    assert segment_of("we expect Intelligent Cloud revenue to grow between 26% and 27%") == "Intelligent Cloud"
+    assert segment_of("We expect Data Center revenue of $30 billion") == "Data Center"
+    assert segment_of("Revenue is expected to be $43.0 billion, plus or minus 2%.") is None
+    assert segment_of("NVIDIA's revenue is expected to be $43.0 billion") is None
+    assert segment_of("Total revenue of $58.0 to $61.0 billion") is None
