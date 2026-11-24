@@ -86,9 +86,20 @@ def analyze(ticker: str, n_events: int = 8, use_llm: bool = True, with_evidence:
             src_text = pr["outlook"] or pr["text"]
             default_tf = {"period_type": "Q", "relative": "current", "text": "", "assumed": True,
                           "from_heading": bool(pr["outlook"])}
+            head_tf = guidance.timeframe(pr["outlook"][:250]) if pr["outlook"] else None
+            if head_tf:  # e.g. "2025 Guidance" / "Outlook for the first quarter of fiscal 2026"
+                default_tf = {**head_tf, "from_heading": True}
             found = guidance.extract(src_text, ticker=info["ticker"], event_date=ev["date"],
                                      source="8-K 보도자료 (Ex-99.1)", source_url=pr["url"],
                                      use_llm=use_llm, default_tf=default_tf)
+            for ex in pr.get("extras") or []:
+                more = guidance.extract(ex["outlook"] or ex["text"], ticker=info["ticker"], event_date=ev["date"],
+                                        source="8-K 첨부자료 (Ex-99)", source_url=ex["url"], use_llm=use_llm,
+                                        default_tf=default_tf | {"from_heading": bool(ex["outlook"])})
+                found += more
+                ev["has_outlook"] = ev["has_outlook"] or bool(ex["outlook"])
+                corpus += [{"text": c, "source": "8-K 첨부자료", "date": ev["date"], "url": ex["url"]}
+                           for c in rag.chunk_text(ex["text"])[:40]]
             items += found
             ev["n_guidance"] = len(found)
             corpus += [{"text": c, "source": "8-K 보도자료", "date": ev["date"], "url": pr["url"]}

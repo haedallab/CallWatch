@@ -234,6 +234,11 @@ def align_item(item: dict, cal: FiscalCalendar, act: Actuals, today: date | None
     if rec.get("derived"):
         notes.append("분기 값이 누적(YTD) 차감으로 계산됨")
     v = verdict(item, value)
+    # a level that misses by more than half almost always means the wrong period or a non-guidance number
+    if item["kind"] != "growth_yoy" and item.get("unit") != "%" and v.get("surprise") is not None \
+            and abs(v["surprise"]) > 50:
+        notes.append(f"실제 {value:,.4g}와 {abs(v['surprise']):.0f}% 차이 — 기간·단위가 다르게 잡혔을 가능성이 커 판정에서 제외")
+        return {**base, "status": "unverifiable", "status_ko": STATUS_KO["unverifiable"], "actual": value}
     return {**base, **v, "actual_source": {
         "concept": rec.get("concept"), "form": rec.get("form"), "accn": rec.get("accn"),
         "filed": rec.get("filed"), "period_end": rec["end"], "derived": rec.get("derived", False)}}

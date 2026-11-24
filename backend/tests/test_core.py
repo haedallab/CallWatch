@@ -130,3 +130,18 @@ def test_api_flow():
     assert qa["citations"]
     assert c.get("/api/document", params={"url": "http://169.254.169.254/"}).status_code == 400
     assert c.put("/api/portfolio", json=[{"ticker": "ZZZZ"}]).status_code == 422
+
+
+def test_real_press_release_noise_is_not_guidance():
+    from app.services import guidance
+    noise = [
+        "Preferred stock, $0.001 par value per share, 100 shares authorized; no shares issued and outstanding 0 0.",
+        "Total constant currency revenues of $96.7 billion for the quarter ended December 31, 2024 increased $10.6 billion.",
+        "Full-year revenue rose 142% to a record $115.2 billion.",
+        "As previously disclosed (1), fourth quarter 2025 results included a notable item of $1.2 billion.",
+        "Revenues excluding hedging effect $ 280,876 $ 307,158 $ (1,953) $ 309,111 9 % (1) % 10 %",
+    ]
+    for s in noise:
+        assert guidance.extract_rules("Outlook\n" + s, {"period_type": "Q", "from_heading": True}) == [], s
+    g = guidance.extract_rules("we expect to invest approximately $75 billion in capital expenditures in 2025.")
+    assert g and g[0]["metric"] == "capex" and g[0]["period_type"] == "FY" and g[0]["fiscal_year"] == 2025

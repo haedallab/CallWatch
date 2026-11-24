@@ -82,7 +82,7 @@ export default function Home() {
                       <td style={{ maxWidth: 200 }}><b>{t}</b><div className="xs muted ellip" title={d.names[t] || ""}>{d.names[t] || ""}</div></td>
                       <td style={{ minWidth: 130 }}>
                         {c?.score != null ? <div className="scorebar"><div className="t"><i style={{ width: `${c.score}%`, background: color }} /></div><b style={{ color }}>{c.score}</b></div>
-                          : c ? <span className="xs muted">검증할 가이던스 부족</span>
+                          : c ? <span className="xs muted" title="실적 보도자료(8-K)에 수치 전망을 싣지 않고 어닝콜에서만 말하는 회사입니다. ‘원문 넣기’로 콜 원문을 넣으면 분석됩니다.">{c.n_verified + c.n_pending === 0 ? "공시에 수치 전망 없음" : "검증할 가이던스 부족"}</span>
                             : st === "failed" ? <span className="xs" style={{ color: C.bad }} title={d.errors[t]}><AlertTriangle size={12} /> 분석 실패</span>
                               : <span className="xs muted"><Loader2 size={12} className="spin" /> {st === "running" ? "분석 중" : "대기 중"}</span>}
                       </td>
