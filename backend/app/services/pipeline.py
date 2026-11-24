@@ -82,6 +82,7 @@ def analyze(ticker: str, n_events: int = 8, use_llm: bool = True, with_evidence:
             warnings.append(f"{ev['date']} 보도자료 수집 실패: {e}")
         ev["press_release_url"] = pr["url"] if pr else ev["url"]
         ev["has_outlook"] = bool(pr and pr["outlook"])
+        ev["webcast_url"] = ((pr or {}).get("webcast") or [None])[0]
         if pr:
             src_text = pr["outlook"] or pr["text"]
             default_tf = {"period_type": "Q", "relative": "current", "text": "", "assumed": True,

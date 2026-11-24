@@ -25,7 +25,7 @@ export interface Score {
   score: number | null; grade: string; style: string; hit_rate: number | null; beat_share: number | null;
   miss_share: number | null; mean_surprise_pct: number | null; explain: string;
 }
-export interface EventRow { date: string; accession: string; after_close: boolean; url: string; press_release_url?: string; has_outlook?: boolean; n_guidance?: number; reaction?: Reaction }
+export interface EventRow { date: string; accession: string; after_close: boolean; url: string; press_release_url?: string; webcast_url?: string | null; has_outlook?: boolean; n_guidance?: number; reaction?: Reaction }
 export interface Report {
   ticker: string; name: string; cik: string; mode: "live" | "demo"; generated_at: string; elapsed_sec: number; llm: string;
   events: EventRow[]; guidance: Guidance[]; score: Score;
@@ -63,6 +63,8 @@ export interface Featured extends Summary {
 }
 export interface PreviewRow { ticker: string; name?: string | null; market: "US" | "KR"; shares?: number | null; weight?: number | null; ok: boolean; analyzable: boolean; error: string | null }
 export interface Preview { rows: PreviewRow[]; skipped: { line: number | null; text: string; reason: string }[]; n_ok: number; n_analyzable: number }
+export interface CallEvent { date: string; audio_url?: string | null; webcast_url?: string | null; press_release_url?: string | null }
+export interface Calls { ticker: string; ir_url?: string | null; events: CallEvent[]; note: string }
 export interface Citation { text: string; source: string; date?: string; url?: string; score?: number }
 export interface QAResponse { answer: string; citations: Citation[]; mode: "llm" | "extractive" | "empty"; latency_ms: number }
 
@@ -133,6 +135,9 @@ export const api = {
   transcripts: (t: string, include_text = false) =>
     request<{ id: string; call_date: string; source: string; chars: number; preview: string; text?: string; public: boolean; source_url: string }[]>("GET", `/api/transcripts/${t}`, { params: { include_text } }),
   deleteTranscript: (id: string) => request("DELETE", `/api/transcripts/${encodeURIComponent(id)}`),
+  calls: (t: string) => request<Calls>("GET", `/api/calls/${t}`),
+  setCalls: (t: string, body: { ir_url?: string; audio?: Record<string, string>; webcast?: Record<string, string> }) =>
+    request<Calls>("PUT", `/api/calls/${t}`, { body }),
   qa: (ticker: string, question: string) => request<QAResponse>("POST", "/api/qa", { body: { ticker, question } }),
 };
 

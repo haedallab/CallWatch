@@ -188,6 +188,12 @@ class TranscriptIn(BaseModel):
     source_url: str | None = Field(None, max_length=500, description="원문 출처 (예: 회사 IR 페이지)")
 
 
+class CallsIn(BaseModel):
+    ir_url: str | None = Field(None, max_length=500, description="회사 IR 이벤트(웹캐스트) 페이지")
+    audio: dict[str, str] | None = Field(None, description="실적발표일(YYYY-MM-DD) → 녹음 파일 주소 (빈 문자열이면 삭제)")
+    webcast: dict[str, str] | None = Field(None, description="실적발표일 → 웹캐스트 페이지 주소 (자동 추출값 덮어쓰기)")
+
+
 class QAIn(BaseModel):
     ticker: str = Field(..., max_length=10)
     question: str = Field(..., min_length=3, max_length=1000)
@@ -749,6 +755,72 @@ def fetch_transcript(ticker: str, year: int = Query(..., ge=2010, le=2100), quar
     if not r:
         raise HTTPException(404, "해당 분기 트랜스크립트를 찾지 못했습니다.")
     return {k: r[k] for k in ("ticker", "call_date", "source")} | {"chars": len(r["text"])}
+
+
+# ---------------------------------------------------------------------------------------
+# earnings calls: where to listen
+# ---------------------------------------------------------------------------------------
+IR_PAGES = {  # fallback when a release does not name its webcast page
+    "AAPL": "https://investor.apple.com/investor-relations/default.aspx",
+    "MSFT": "https://www.microsoft.com/en-us/investor",
+    "NVDA": "https://investor.nvidia.com",
+    "GOOGL": "https://abc.xyz/investor/",
+    "TSLA": "https://ir.tesla.com",
+    "C": "https://www.citigroup.com/global/investors",
+    "LLY": "https://investor.lilly.com",
+}
+AUDIO_EXT = (".mp3", ".m4a", ".aac", ".wav", ".ogg", ".mp4")
+
+
+def _https(u: str | None) -> bool:
+    return bool(u) and u.startswith("https://") and len(u) < 500
+
+
+@app.get("/api/calls/{ticker}", tags=["analysis"], summary="실적발표 콜 듣기 링크 (웹캐스트·녹음·IR 페이지)")
+def calls(ticker: str):
+    t = ticker.upper()
+    reg = db.cache_get(f"calls:{t}") or {}
+    rep = find_report(t)[1] or {}
+    events = []
+    for e in rep.get("events") or []:
+        d = e["date"]
+        audio = (reg.get("audio") or {}).get(d)
+        events.append({"date": d, "audio_url": audio,
+                       "webcast_url": (reg.get("webcast") or {}).get(d) or e.get("webcast_url"),
+                       "press_release_url": e.get("press_release_url")})
+    return {"ticker": t, "ir_url": reg.get("ir_url") or IR_PAGES.get(t), "events": events[::-1],
+            "note": "웹캐스트 다시듣기는 회사가 보통 몇 주~몇 달 동안만 제공합니다."}
+
+
+@app.put("/api/calls/{ticker}", tags=["analysis"], summary="콜 링크 등록 (운영자)")
+def set_calls(ticker: str, body: CallsIn):
+    if not auth.is_verified_owner():
+        raise HTTPException(403, "콜 링크는 운영자만 등록할 수 있습니다.")
+    t = ticker.upper()
+    reg = db.cache_get(f"calls:{t}") or {}
+    if body.ir_url is not None:
+        if body.ir_url and not _https(body.ir_url):
+            raise HTTPException(400, "https:// 주소만 등록할 수 있습니다.")
+        reg["ir_url"] = body.ir_url or None
+    for field_name in ("audio", "webcast"):
+        updates = getattr(body, field_name)
+        if updates is None:
+            continue
+        cur = dict(reg.get(field_name) or {})
+        for d, u in updates.items():
+            try:
+                date.fromisoformat(d)
+            except ValueError:
+                raise HTTPException(400, f"날짜 형식이 아닙니다: {d}") from None
+            if not u:
+                cur.pop(d, None)
+            elif not _https(u):
+                raise HTTPException(400, "https:// 주소만 등록할 수 있습니다.")
+            else:
+                cur[d] = u
+        reg[field_name] = cur
+    db.cache_set(f"calls:{t}", reg)
+    return calls(t)
 
 
 # ---------------------------------------------------------------------------------------

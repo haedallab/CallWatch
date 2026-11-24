@@ -171,6 +171,10 @@ def html_to_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "ix:header", "head"]):
         tag.decompose()
+    for a in soup.find_all("a", href=True):  # keep external links (webcast pages) visible in the text
+        href = a["href"].strip()
+        if href.startswith(("http://", "https://")) and href not in a.get_text():
+            a.append(f" <{href}>")
     for br in soup.find_all(["br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "table"]):
         br.append("\n")
     text = soup.get_text(" ")
@@ -184,7 +188,29 @@ def document_text(url: str, max_chars: int = 600_000) -> str:
         html = _get(url, as_json=False)
         return html_to_text(html)[:max_chars] if html else ""
 
-    return _cached(f"sec:doc:{url}", load, ttl_hours=24 * 30) or ""
+    return _cached(f"sec:doc2:{url}", load, ttl_hours=24 * 30) or ""
+
+
+_CALL_WORD = re.compile(r"webcast|conference call|earnings call|listen|replay|audio", re.I)
+_URL = re.compile(r"(https?://[^\s<>()\[\]\"']+|\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|xyz)(?:/[^\s<>()\[\]\"']*)?)", re.I)
+_NOT_CALL = re.compile(r"sec\.gov|twitter\.com|x\.com/|linkedin|facebook|instagram|youtube\.com/@|gaap|\.pdf$", re.I)
+
+
+def webcast_links(text: str, limit: int = 2) -> list[str]:
+    """URLs mentioned next to 'webcast' / 'conference call' in an earnings release."""
+    out: list[str] = []
+    for m in _CALL_WORD.finditer(text):
+        window = text[max(0, m.start() - 300): m.end() + 400]
+        for um in _URL.finditer(window):
+            u = um.group(0).rstrip(".,;:")
+            if (um.start() and window[um.start() - 1] in "@.") or "@" in u or _NOT_CALL.search(u) or len(u) < 8:
+                continue
+            u = u if u.lower().startswith("http") else "https://" + u
+            if u not in out:
+                out.append(u)
+            if len(out) >= limit:
+                return out
+    return out
 
 
 _EX99 = re.compile(r"ex[-_]?99[-_.]?0?1|ex991|exhibit[-_]?99|ex99", re.I)
@@ -216,7 +242,8 @@ def press_release(cik: str, accession: str) -> dict | None:
         extras.append({"url": base + i["name"], "text": t, "outlook": outlook_section(t), "name": i["name"]})
         if len(extras) >= 3:
             break
-    return {"url": url, "text": text, "outlook": outlook_section(text), "extras": extras}
+    return {"url": url, "text": text, "outlook": outlook_section(text), "extras": extras,
+            "webcast": webcast_links(text)}
 
 
 _OUTLOOK_HEAD = re.compile(
