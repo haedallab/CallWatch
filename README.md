@@ -93,9 +93,9 @@
 pip install -r requirements-dev.txt
 cp .env.example .env              # SEC_USER_AGENT, (선택) GEMINI_API_KEY, TOSS_* 
 ./run.sh                          # API :8000/docs + React :5173
-cd backend && pytest -q           # 테스트 32건 (공개 접근·브라우저별 분리·한도·운영자 전용 토스 포함)
+cd backend && pytest -q           # 테스트 39건 (NVIDIA 실데이터 샘플, 네트워크 없이)
 ```
-서비스는 SEC 실데이터만 씁니다. 가상 기업 4곳(KAIA·NBLU·HNRT·ORBT)은 자동 테스트용 고정 데이터로만 남아 있고(`ALLOW_DEMO=1`일 때만 켜짐), 배포 서버에서는 꺼져 있습니다.
+서비스는 SEC 실데이터만 씁니다. 자동 테스트는 NVIDIA의 실제 SEC 데이터(XBRL 실적 9개 기간, 8-K 실적 보도자료 5건의 Outlook)를 잘라 만든 고정 샘플(`backend/tests/real_sec.py`)로 네트워크 없이 돌아가며, 예를 들어 FY2026 Q1 매출총이익률 가이던스(70.6%)가 H20 재고 충당금 때문에 실제 60.5%로 하회한 것을 그대로 검증합니다.
 
 ### 배포
 1. **Supabase (DB만)**: 프로젝트 → Database → 비밀번호 재설정 → Connect에서 **Session pooler** URI 복사 (Render 무료 플랜은 IPv6 직접 연결 불가). 백엔드 테이블은 RLS로 공개 API에서 막혀 있습니다

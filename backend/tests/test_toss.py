@@ -1,16 +1,10 @@
 """Toss Securities connector: response normalisation, token reuse, error hints, owner-key gating."""
-import os
-import tempfile
+import httpx
+import pytest
+from fastapi.testclient import TestClient
 
-os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
-os.environ.setdefault("WARM_FEATURED", "0")
-
-import httpx  # noqa: E402
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app import db, main  # noqa: E402
-from app.services import toss  # noqa: E402
+from app import db, main
+from app.services import toss
 
 # shape copied from the official spec example (openapi.tossinvest.com, /api/v1/holdings "withHoldings")
 SPEC_EXAMPLE = {
@@ -71,17 +65,26 @@ def test_token_is_cached_and_403_gives_ip_hint(monkeypatch):
     object.__setattr__(toss.settings, "toss_client_secret", "")
 
 
-def test_owner_key_gates_sync_and_hides_money():
+def fake_toss(monkeypatch):
+    """Toss responses in the shape of the official spec example (no network)."""
+    monkeypatch.setattr(toss, "configured", lambda: True)
+    monkeypatch.setattr(toss, "accounts", lambda: [{"accountSeq": 7, "accountNo": "123•••••901", "accountType": "BROKERAGE"}])
+    monkeypatch.setattr(toss, "holdings_raw", lambda seq: SPEC_EXAMPLE)
+    monkeypatch.setattr(toss, "usd_krw", lambda: 1420.0)
+
+
+def test_owner_key_gates_sync_and_hides_money(monkeypatch):
+    fake_toss(monkeypatch)
     object.__setattr__(main.settings, "owner_key", "s3cret")
     c = TestClient(main.app)
-    live = {"X-Data-Mode": "live"}
-    assert c.post("/api/broker/toss/sync", json={}, headers=live).status_code == 403
-    demo_h = {"X-Data-Mode": "demo"}
-    ok = c.post("/api/broker/toss/sync", json={}, headers=demo_h | {"X-Owner-Key": "s3cret"})
-    assert ok.status_code == 200 and ok.json()["n_analyzable"] == 4
-    # callers without a browser id share the "local" portfolio: amounts hidden unless owner
-    public = c.get("/api/portfolio", headers=demo_h).json()
-    assert "value_krw" not in public[0] and "weight" in public[0]
-    owner = c.get("/api/portfolio", headers=demo_h | {"X-Owner-Key": "s3cret"}).json()
-    assert owner[0]["value_krw"] > 0
-    object.__setattr__(main.settings, "owner_key", "")
+    try:
+        assert c.post("/api/broker/toss/sync", json={}).status_code == 403
+        ok = c.post("/api/broker/toss/sync", json={}, headers={"X-Owner-Key": "s3cret"})
+        assert ok.status_code == 200 and ok.json()["n"] == 2 and ok.json()["n_analyzable"] == 1  # AAPL yes, 005930 no
+        # callers without a browser id share the "local" portfolio: amounts hidden unless owner
+        public = c.get("/api/portfolio").json()
+        assert "value_krw" not in public[0] and "weight" in public[0]
+        owner = c.get("/api/portfolio", headers={"X-Owner-Key": "s3cret"}).json()
+        assert owner[0]["value_krw"] > 0
+    finally:
+        object.__setattr__(main.settings, "owner_key", "")

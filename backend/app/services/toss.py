@@ -185,24 +185,3 @@ def normalize(raw: dict, fx: float | None = None) -> dict:
         "daily_rate": _num((raw.get("dailyProfitLoss") or {}).get("rate")),
     }
     return {"rows": sorted(rows, key=lambda r: -r["value_krw"]), "summary": summary}
-
-
-# ---- demo fixture (same shape as the real /api/v1/holdings response) ---------------------
-def demo_holdings() -> dict:
-    def item(sym, name, country, cur, qty, last, avg, krw, usd, rate, d):
-        return {"symbol": sym, "name": name, "marketCountry": country, "currency": cur, "quantity": str(qty),
-                "lastPrice": str(last), "averagePurchasePrice": str(avg),
-                "marketValue": {"purchaseAmount": {"krw": str(round(krw / (1 + rate)))}, "amount": {"krw": str(krw), "usd": str(usd)}},
-                "profitLoss": {"amount": {"krw": str(round(krw - krw / (1 + rate)))}, "rate": str(rate)},
-                "dailyProfitLoss": {"rate": str(d)}, "cost": {"commission": "0", "tax": "0"}}
-    items = [
-        item("KAIA", "Kaia Semiconductor (가상)", "US", "USD", 120, 168.4, 121.0, 28_700_000, 20208, 0.3917, 0.012),
-        item("NBLU", "Nubiz Cloud (가상)", "US", "USD", 300, 52.1, 47.5, 22_190_000, 15630, 0.0968, -0.004),
-        item("ORBT", "Orbit Motors (가상)", "US", "USD", 200, 71.3, 80.2, 20_250_000, 14260, -0.111, 0.006),
-        item("HNRT", "Hanaro Retail Tech (가상)", "US", "USD", 500, 18.2, 22.4, 12_920_000, 9100, -0.1875, -0.021),
-        item("005930", "삼성전자", "KR", "KRW", 100, 72000, 65000, 7_200_000, 5070, 0.1077, 0.008),
-    ]
-    total = sum(float(i["marketValue"]["amount"]["krw"]) for i in items)
-    return {"totalPurchaseAmount": {"krw": str(round(total / 1.08))}, "marketValue": {"amount": {"krw": str(round(total))}},
-            "profitLoss": {"amount": {"krw": str(round(total - total / 1.08))}, "rate": "0.0800"},
-            "dailyProfitLoss": {"rate": "0.0031"}, "items": items}

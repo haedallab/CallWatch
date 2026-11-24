@@ -1,16 +1,11 @@
 """Unit + integration tests. Run from backend/:  pytest -q"""
-import os
-import tempfile
+import pytest
+from fastapi.testclient import TestClient
 
-os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
-os.environ.setdefault("WARM_FEATURED", "0")
-os.environ["DEMO_MODE"] = "1"
+from app.main import app
+from app.services import align, edgar, guidance, pipeline, scoring
 
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app.main import app  # noqa: E402
-from app.services import align, demo, edgar, guidance, pipeline, scoring  # noqa: E402
+from .real_sec import FixtureSource, nvda_facts
 
 NVDA_STYLE = """Outlook
 NVIDIA's outlook for the third quarter of fiscal 2025 is as follows:
@@ -75,21 +70,18 @@ def test_llm_items_must_be_grounded(monkeypatch):
 
 
 # ---- XBRL / calendar / verdict -------------------------------------------------------------
-def test_q4_and_ytd_derivation_from_demo_facts():
-    facts = demo.DemoSource.facts(demo.company("NBLU").cik)
-    s = edgar.quarterly_and_annual(facts, "revenue")
-    q4 = [q for q in s["Q"] if q["end"].endswith("-12-31")]
-    assert q4 and all(q["derived"] for q in q4)
-    cap = edgar.quarterly_and_annual(facts, "capex")
-    assert len(cap["Q"]) >= 6  # cash-flow quarters exist only via YTD differences
+def test_q4_is_derived_from_the_fiscal_year_total():
+    s = edgar.quarterly_and_annual(nvda_facts(), "revenue")
+    q4 = next(q for q in s["Q"] if q["end"] == "2026-01-25")
+    assert q4["derived"] and q4["value"] == pytest.approx(215938e6 - 44062e6 - 46743e6 - 57006e6)  # $68.1B reported
 
 
 def test_fiscal_calendar_52_week_year():
-    co = demo.company("KAIA")
-    rev = edgar.quarterly_and_annual(co.facts(), "revenue")
+    rev = edgar.quarterly_and_annual(nvda_facts(), "revenue")
     cal = align.FiscalCalendar(rev["FY"], [r["end"] for r in rev["Q"]])
-    last_fy = rev["FY"][-1]
-    assert cal.label(cal.year_of(align._d(last_fy["end"]))) == f"FY{align._d(last_fy['end']).year}"
+    # NVIDIA's fiscal 2026 ended on the last Sunday of January 2026
+    assert cal.label(cal.year_of(align._d("2026-01-25"))) == "FY2026"
+    assert cal.label(cal.year_of(align._d("2026-04-26"))) == "FY2027"
 
 
 @pytest.mark.parametrize("actual,status,fav", [(5.3e9, "above", True), (5.1e9, "within", None), (4.9e9, "below", False)])
@@ -113,20 +105,44 @@ def test_credibility_score_bounds():
 
 
 # ---- end-to-end ---------------------------------------------------------------------------
-def test_pipeline_styles_are_recovered():
-    scores = {t: pipeline.analyze(t, src=demo.DemoSource, use_llm=False)["score"] for t in demo.COMPANIES}
-    assert scores["KAIA"]["style"].startswith("보수적")
-    assert scores["HNRT"]["score"] < 60 < scores["NBLU"]["score"]
+def _gaap(rep, metric):
+    """The headline outlook bullet per quarter (e.g. 'Revenue is expected to be ...')."""
+    return {g["period"]["label"]: g for g in rep["guidance"]
+            if g["metric"] == metric and g["basis"] in ("GAAP", "unspecified") and g.get("period")
+            and "expected to be" in g["quote"] and "H20" not in g["quote"][:20]}
+
+
+def test_nvidia_guidance_against_reported_results():
+    """Five real NVIDIA outlooks (Q1 FY26 - Q1 FY27) aligned with what the 10-Q/10-K later reported."""
+    rep = pipeline.analyze("NVDA", n_events=5, use_llm=False, with_evidence=False, src=FixtureSource)
+    rev = _gaap(rep, "revenue")
+    assert {p: g["status"] for p, g in rev.items()} == {
+        "FY2026 Q1": "above", "FY2026 Q2": "above", "FY2026 Q3": "above", "FY2026 Q4": "above", "FY2027 Q1": "above"}
+    assert rev["FY2026 Q1"]["low"] == pytest.approx(42.14e9) and rev["FY2026 Q1"]["actual"] == pytest.approx(44062e6)
+    gm = _gaap(rep, "gross_margin")
+    assert gm["FY2026 Q1"]["status"] == "below"          # $4.5B H20 charge: 60.5% vs 70.6% guided
+    assert gm["FY2026 Q3"]["status"] == "within"         # 73.4% vs 73.3% +/- 50bp
+    assert gm["FY2027 Q1"]["status"] == "within"
+    opex = _gaap(rep, "operating_expenses")
+    assert opex["FY2026 Q3"]["status"] == "within" and opex["FY2026 Q1"]["favorable"] is True
+    nongaap = [g for g in rep["guidance"] if g["basis"] == "non-GAAP" and g["metric"] == "gross_margin"]
+    assert nongaap and all(g["basis_mismatch"] for g in nongaap)  # never scored against GAAP XBRL
+    h20 = [g for g in rep["guidance"] if "loss in H20 revenue" in g["quote"] and g["metric"] == "revenue"
+           and g["low"] < 1e10]
+    assert all(g["status"] == "unverifiable" for g in h20)  # "$8.0B H20 loss" is not a revenue forecast
+    assert rep["score"]["score"] is not None and rep["score"]["style"].startswith("정확")  # live site shows the same
+    assert rep["events"][0]["webcast_url"] == "https://investor.nvidia.com"
 
 
 def test_api_flow():
     c = TestClient(app)
-    assert c.get("/health").json()["mode"] == "demo"
-    r = c.post("/api/analyze/NBLU").json()
-    assert r["guidance"] and r["prices"]
+    assert c.get("/health").json()["mode"] == "live"
+    r = c.post("/api/analyze/NVDA?events=5&use_llm=false&evidence=false").json()
+    assert r["guidance"] and r["ticker"] == "NVDA"
+    c.put("/api/portfolio", json=[{"ticker": "NVDA"}])
     s = c.get("/api/portfolio/summary").json()
-    assert "NBLU" not in s["missing"]
-    qa = c.post("/api/qa", json={"ticker": "NBLU", "question": "revenue guidance"}).json()
+    assert "NVDA" not in s["missing"]
+    qa = c.post("/api/qa", json={"ticker": "NVDA", "question": "revenue outlook"}).json()
     assert qa["citations"]
     assert c.get("/api/document", params={"url": "http://169.254.169.254/"}).status_code == 400
     assert c.put("/api/portfolio", json=[{"ticker": "ZZZZ"}]).status_code == 422

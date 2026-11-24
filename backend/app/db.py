@@ -162,10 +162,10 @@ def delete_transcript(tid: str, user_id: str = "local") -> None:
 def delete_user(user_id: str) -> None:
     """Remove everything stored for one user (holdings, transcripts, personal reports, usage counters)."""
     execute("DELETE FROM transcripts WHERE user_id = ?", (user_id,))
-    for prefix in (f"holdings:demo:{user_id}", f"holdings:live:{user_id}", f"broker:last:demo:{user_id}",
-                   f"broker:last:live:{user_id}", f"corpus:demo:{user_id}:", f"corpus:live:{user_id}:", f"usage:{user_id}:"):
+    for prefix in (f"holdings:live:{user_id}", f"broker:last:live:{user_id}", f"corpus:live:{user_id}:",
+                   f"usage:{user_id}:"):
         execute("DELETE FROM kv_cache WHERE key LIKE ?", (prefix + "%",))
-    for prefix in (f"DEMO:{user_id.upper()}:", f"LIVE:{user_id.upper()}:"):
+    for prefix in (f"LIVE:{user_id.upper()}:",):
         execute("DELETE FROM reports WHERE ticker LIKE ?", (prefix + "%",))
 
 

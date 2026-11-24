@@ -1,4 +1,4 @@
-"""Request context: who is calling (Supabase Auth JWT) and which data mode (demo/live) they view.
+"""Request context: who is calling (Supabase Auth JWT) and which browser (anonymous id) is asking.
 
 Sign-in is optional for the deployment: without SUPABASE_URL / SUPABASE_JWT_SECRET the API runs as a
 single-user app (uid "local"). With it, every write is scoped to the signed-in user's id.
@@ -18,7 +18,7 @@ import jwt
 from .config import settings
 
 _user: contextvars.ContextVar[dict | None] = contextvars.ContextVar("user", default=None)
-_mode: contextvars.ContextVar[str] = contextvars.ContextVar("mode", default="demo" if settings.demo_mode else "live")
+_mode: contextvars.ContextVar[str] = contextvars.ContextVar("mode", default="live")  # real data only
 _client: contextvars.ContextVar[str] = contextvars.ContextVar("client", default="")
 _owner_key: contextvars.ContextVar[str] = contextvars.ContextVar("owner_key", default="")
 _ip: contextvars.ContextVar[str] = contextvars.ContextVar("ip", default="")
@@ -80,10 +80,7 @@ def bind(authorization: str | None, data_mode: str | None, client_id: str | None
     if authorization and authorization.lower().startswith("bearer ") and settings.auth_enabled:
         user = verify(authorization.split(" ", 1)[1].strip())
     _user.set(user)
-    if data_mode == "live" or (data_mode == "demo" and settings.allow_demo):
-        _mode.set(data_mode)
-    elif not settings.allow_demo:
-        _mode.set("live")
+    _mode.set("live")  # the old X-Data-Mode header is accepted but ignored
     cid = (client_id or "")[:64]
     _client.set(cid if re.fullmatch(r"[A-Za-z0-9-]{8,64}", cid or "") else "")
     _owner_key.set(owner_key or "")
