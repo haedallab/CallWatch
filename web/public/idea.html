@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CallWatch · 아이디어 공유</title>
+<meta name="description" content="어닝콜 가이던스를 SEC 실적으로 채점하는 CallWatch의 주제, 대상 사용자, 데이터·AI 활용 계획">
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root {
+    --dark: #004191; --blue: #1487C8; --light: #5FBEEB;
+    --ink: #13233F; --muted: #55657C; --line: #D9E2EE; --paper: #F4F7FB; --card: #fff; --tint: #EAF3FB;
+    --kept: #1B7F5A; --miss: #B42318;
+    --font: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); color: var(--ink); background: var(--paper); font-size: 17px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1; word-break: keep-all; }
+  a { color: var(--blue); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.02em; line-height: 1.25; }
+  p { margin: 0; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  header.bar { background: var(--dark); color: #fff; border-bottom: 3px solid var(--blue); }
+  header.bar .wrap { height: 58px; display: flex; align-items: center; gap: 16px; }
+  header.bar b { font-size: 18px; font-weight: 760; letter-spacing: -0.02em; }
+  header.bar span { color: #C9DCF2; font-size: 14.5px; }
+  header.bar a { margin-left: auto; color: #fff; font-weight: 650; font-size: 14.5px; text-decoration: none;
+    background: var(--blue); padding: 7px 14px; border-radius: 8px; }
+  header.bar a:hover { background: var(--light); color: var(--dark); }
+
+  .hero { padding: 72px 0 64px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.15fr 1fr; gap: 56px; align-items: center; }
+  .hero .course { color: var(--muted); font-size: 15px; margin-bottom: 18px; }
+  .hero h1 { font-size: clamp(38px, 5vw, 58px); font-weight: 780; letter-spacing: -0.035em; }
+  .hero .sub { margin-top: 22px; font-size: 19px; color: #33445E; max-width: 34em; }
+  .cta { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; }
+  .cta a { display: inline-flex; align-items: center; height: 46px; padding: 0 20px; border-radius: 10px; font-weight: 680; text-decoration: none; font-size: 16px; }
+  .cta .primary { background: var(--dark); color: #fff; }
+  .cta .primary:hover { background: var(--blue); }
+  .cta .ghost { border: 1.5px solid var(--line); color: var(--ink); background: #fff; }
+  .cta .ghost:hover { border-color: var(--blue); }
+
+  /* the signature element: one real promise and its grade */
+  figure { margin: 0; }
+  .receipt { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 26px 22px;
+    box-shadow: 0 1px 2px rgba(19,35,63,.06), 0 10px 30px rgba(19,35,63,.08); }
+  .receipt .who { font-size: 14px; color: var(--muted); }
+  .receipt .what { margin-top: 4px; font-size: 21px; font-weight: 720; }
+  .scale { position: relative; height: 92px; margin: 26px 0 6px; }
+  .scale .axis { position: absolute; left: 0; right: 0; top: 46px; height: 2px; background: var(--line); }
+  .scale .band { position: absolute; top: 36px; height: 22px; left: 12%; width: 44%; background: var(--tint); border: 1.5px solid var(--blue); border-radius: 6px; }
+  .scale .band-l { position: absolute; top: 0; left: 12%; width: 44%; text-align: center; font-size: 13.5px; color: var(--dark); font-weight: 650; }
+  .scale .tick { position: absolute; top: 66px; font-size: 13px; color: var(--muted); transform: translateX(-50%); }
+  .scale .dot { position: absolute; left: 82%; top: 37px; width: 20px; height: 20px; border-radius: 50%; background: var(--kept); transform: translateX(-50%);
+    box-shadow: 0 0 0 5px rgba(27,127,90,.16); animation: land .9s cubic-bezier(.2,.8,.2,1) .35s both; }
+  .scale .dot-l { position: absolute; left: 82%; top: 0; transform: translateX(-50%); font-size: 13.5px; font-weight: 700; color: var(--kept); white-space: nowrap; }
+  @keyframes land { from { left: 34%; opacity: 0; } }
+  .verdict { display: flex; align-items: baseline; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .verdict b { color: var(--kept); font-size: 17px; white-space: nowrap; }
+  .verdict span { color: var(--muted); font-size: 14.5px; }
+
+  section.block { padding: 64px 0; border-top: 1px solid var(--line); }
+  section.block:nth-of-type(even) { background: #fff; }
+  .block .wrap { display: grid; grid-template-columns: 260px 1fr; gap: 48px; }
+  .block h2 { font-size: 28px; font-weight: 760; }
+  .block .lede { font-size: 19px; font-weight: 600; margin-bottom: 22px; }
+  .block .body > p + p { margin-top: 14px; }
+  .block .note { color: var(--muted); font-size: 15px; margin-top: 18px; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 8px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  section.block:nth-of-type(even) .panel { background: var(--paper); }
+  .panel h3 { font-size: 17px; font-weight: 720; margin-bottom: 8px; }
+  .panel p, .panel li { font-size: 15.5px; color: #33445E; }
+  .panel ul { margin: 0; padding-left: 18px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+  th { text-align: left; font-weight: 650; color: var(--muted); font-size: 14px; padding: 10px 12px; border-bottom: 2px solid var(--ink); }
+  td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { font-weight: 650; white-space: nowrap; }
+
+  ol.flow { list-style: none; counter-reset: s; margin: 0; padding: 0; display: grid; gap: 0; }
+  ol.flow li { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  ol.flow li::before { content: counter(s); width: 32px; height: 32px; border-radius: 50%; background: var(--dark); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+  ol.flow b { display: block; font-size: 17px; }
+  ol.flow span { color: #33445E; font-size: 15.5px; overflow-wrap: anywhere; }
+  .block .body, ol.flow li > div { min-width: 0; }
+  ol.flow a { font-weight: 650; }
+
+  .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .status .panel b { display: block; font-size: 30px; font-weight: 780; color: var(--dark); line-height: 1.2; }
+
+  footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+
+  @media (max-width: 860px) {
+    .hero .wrap, .block .wrap, .two, .status { grid-template-columns: 1fr; }
+    .hero { padding: 44px 0; }
+    .block .wrap { gap: 18px; }
+    td:first-child { white-space: normal; }
+    header.bar span { display: none; }
+    table { font-size: 14.5px; } th, td { padding: 10px 6px; }
+    .wrap { padding: 0 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .scale .dot { animation: none; } }
+</style>
+</head>
+<body>
+<header class="bar"><div class="wrap"><b>CallWatch</b><span>아이디어 공유 · 중간발표</span><a href="/">프로토타입 열기</a></div></header>
+
+<main>
+<div class="hero"><div class="wrap">
+  <div>
+    <p class="course">KAIST 디지털금융MBA · 금융빅데이터분석실습 팀 프로젝트</p>
+    <h1>경영진은 말한 만큼 해내는가</h1>
+    <p class="sub">CallWatch는 미국 상장사가 어닝콜과 보도자료에서 내놓은 숫자 약속(가이던스)을 몇 달 뒤 SEC에 제출된 실제 실적과 맞대어 채점하고, 회사마다 “가이던스 신뢰도”를 보여주는 서비스입니다.</p>
+    <div class="cta">
+      <a class="primary" href="/">프로토타입 열기</a>
+      <a class="ghost" href="https://callwatch-api.onrender.com/docs">API 문서 (Swagger)</a>
+      <a class="ghost" href="https://github.com/haedallab/CallWatch">GitHub</a>
+    </div>
+  </div>
+  <figure class="receipt" aria-label="실제 채점 예시: Citigroup 2025년 매출 가이던스 830억~845억 달러, 실제 852억 달러로 상회">
+    <p class="who">실제 채점 예시 · Citigroup · 2025년 1월 15일 실적발표</p>
+    <p class="what">2025년 연간 매출 가이던스</p>
+    <div class="scale" aria-hidden="true">
+      <div class="axis"></div>
+      <div class="band-l">약속 범위</div>
+      <div class="band"></div>
+      <div class="dot-l">실제 $85.22B</div>
+      <div class="dot"></div>
+      <div class="tick" style="left:12%">$83.5B</div>
+      <div class="tick" style="left:56%">$84.5B</div>
+    </div>
+    <div class="verdict"><b>상회 · 약속 이행</b><span>범위 위쪽으로 +1.5%, SEC 10-K XBRL 기준</span></div>
+  </figure>
+</div></div>
+
+<section class="block" id="problem"><div class="wrap">
+  <h2>대상 사용자와 문제</h2>
+  <div class="body">
+    <p class="lede">투자자는 경영진의 전망을 듣고 주식을 사지만, 그 전망이 과거에 얼마나 지켜졌는지는 확인하기 어렵습니다.</p>
+    <div class="two">
+      <div class="panel"><h3>누가 쓰나</h3>
+        <ul>
+          <li>미국 주식을 직접 보유한 개인 투자자</li>
+          <li>기업을 분석하는 금융 실무자·MBA 학생</li>
+          <li>내 포트폴리오 회사들이 믿을 만한지 한눈에 보고 싶은 사람</li>
+        </ul>
+      </div>
+      <div class="panel"><h3>무엇이 어렵나</h3>
+        <ul>
+          <li>약속은 콜 음성·보도자료 문장에, 실적은 석 달 뒤 공시 숫자로 따로 나옴</li>
+          <li>회사마다 회계연도가 달라 “FY26 Q2”가 언제인지부터 헷갈림</li>
+          <li>무료 서비스는 컨센서스 대비 서프라이즈만 보여주고, 회사 자신의 약속과는 비교하지 않음</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">해결 질문: “이 회사는 말한 만큼 해내는가, 다음 가이던스를 얼마나 믿어야 하는가”를 숫자와 원문 근거로 답한다.</p>
+  </div>
+</div></section>
+
+<section class="block" id="data"><div class="wrap">
+  <h2>데이터 확보와 분석 방향</h2>
+  <div class="body">
+    <p class="lede">무료 공공 데이터인 SEC 공시만으로 약속과 실적을 모두 구하고, 분석 규칙은 공개해 누구나 다시 계산할 수 있게 합니다.</p>
+    <table>
+      <tr><th>데이터</th><th>출처</th><th>쓰임</th></tr>
+      <tr><td>실적발표 보도자료</td><td>SEC EDGAR 8-K (Item 2.02) 첨부 Ex-99</td><td>Outlook 절의 가이던스 문장</td></tr>
+      <tr><td>어닝콜 원문</td><td>회사 IR 사이트 공개 트랜스크립트</td><td>콜에서 말한 가이던스</td></tr>
+      <tr><td>실제 실적</td><td>SEC XBRL companyfacts API</td><td>매출·영업이익·EPS·설비투자 등 분기 값</td></tr>
+      <tr><td>주가</td><td>yfinance (실패 시 Stooq)</td><td>발표일·결과일의 초과수익률</td></tr>
+    </table>
+    <ol class="flow" style="margin-top:28px">
+      <li><div><b>약속 찾기</b><span>보도자료와 콜 원문에서 “미래 기간 + 지표 + 숫자(범위)” 문장을 뽑습니다.</span></div></li>
+      <li><div><b>기간 맞추기</b><span>회사별 회계연도로 “FY26 Q2” 같은 표현을 실제 기간과 XBRL 값에 연결합니다.</span></div></li>
+      <li><div><b>채점</b><span>범위 안·유리한 이탈은 이행, 불리한 이탈은 미이행. 사업부문·기준이 다른 항목은 참고로만 표시합니다.</span></div></li>
+      <li><div><b>신뢰도와 시장 반응</b><span>신뢰도 = 100 × (0.7 × 이행률 + 0.3 × (1 − 미이행 강도)). 발표일 전후 초과수익률(CAR)도 함께 계산합니다.</span></div></li>
+    </ol>
+  </div>
+</div></section>
+
+<section class="block" id="ai"><div class="wrap">
+  <h2>AI 활용 계획</h2>
+  <div class="body">
+    <p class="lede">AI는 숫자를 만들지 않고, 긴 원문에서 약속 문장을 찾아 정리하는 일과 근거를 붙여 답하는 일만 맡습니다.</p>
+    <div class="two">
+      <div class="panel"><h3>가이던스 추출 (Gemini API)</h3>
+        <p>규칙 엔진이 먼저 문장을 거르고, Gemini가 지표·기간·범위를 JSON으로 정리합니다. 원문 문장을 그대로 인용하게 하고, 서버가 그 인용이 원문에 있는지·숫자가 맞는지 다시 확인한 것만 남깁니다.</p>
+      </div>
+      <div class="panel"><h3>근거 기반 질문·답변 (RAG)</h3>
+        <p>“Citi의 올해 순이자이익 가이던스는?” 같은 질문에, 그 회사 공시·콜 원문에서 찾은 문단만 근거로 답하고 문장마다 [1] 출처를 붙입니다. 근거에 없으면 모른다고 답하고 투자 권유는 하지 않습니다.</p>
+      </div>
+    </div>
+    <p class="note">API 키는 서버에만 두고, 같은 문서는 다시 호출하지 않도록 응답을 캐시해 비용을 줄입니다.</p>
+  </div>
+</div></section>
+
+<section class="block" id="prototype"><div class="wrap">
+  <h2>프로토타입 화면과 이용 흐름</h2>
+  <div class="body">
+    <p class="lede">회원가입 없이 첫 화면에서 바로 결과를 보고, 한 회사의 약속을 원문 문장까지 따라가는 흐름입니다.</p>
+    <ol class="flow">
+      <li><div><b><a href="/">주요 종목</a></b><span>AAPL, MSFT, NVDA, GOOGL, TSLA, SPCX, C, LLY 8종목의 신뢰도와 성향을 한 화면에서 비교합니다.</span></div></li>
+      <li><div><b><a href="/company/MSFT">종목 › 약속 장부</a></b><span>한 회사의 가이던스를 발표일 순으로 보고, 이행·미이행·대기·참고로 걸러봅니다.</span></div></li>
+      <li><div><b>근거 열기</b><span>항목을 누르면 원문 문장, 실제 SEC 값, 콜 다시 듣기 링크, 그날 주가 반응이 나옵니다.</span></div></li>
+      <li><div><b><a href="/ask">AI에게 묻기</a></b><span>궁금한 점을 질문하면 출처가 붙은 답을 받습니다.</span></div></li>
+      <li><div><b><a href="/portfolio">내 포트폴리오</a></b><span>보유 종목을 붙여넣으면 비중을 반영한 포트폴리오 신뢰도를 계산합니다.</span></div></li>
+    </ol>
+    <p class="note">판정 규칙은 <a href="/method">판정 방법</a> 화면에 공개되어 있습니다. 첫 접속 때 서버가 깨어나는 데 30초쯤 걸릴 수 있습니다.</p>
+  </div>
+</div></section>
+
+<section class="block" id="status"><div class="wrap">
+  <h2>지금까지와 남은 일</h2>
+  <div class="body">
+    <p class="lede">알파 버전이 배포되어 실제 SEC 데이터로 동작하며, 기말까지 채점 정확도와 데이터 범위를 넓힙니다.</p>
+    <div class="status">
+      <div class="panel"><b>8</b><p>주요 종목 자동 분석, 그중 5종목 신뢰도 산출</p></div>
+      <div class="panel"><b>16</b><p>운영자가 등록한 공개 어닝콜 원문 (Microsoft·Citigroup)</p></div>
+      <div class="panel"><b>40</b><p>실데이터 표본으로 만든 회귀 테스트</p></div>
+    </div>
+    <div class="two" style="margin-top:20px">
+      <div class="panel"><h3>검증하며 고친 것</h3>
+        <ul>
+          <li>Microsoft 설비투자는 리스 포함 기준이라 참고로 전환</li>
+          <li>Azure 등 사업부문 성장률은 점수에서 제외</li>
+          <li>과거 실적·재무표 행을 가이던스로 오인하던 문제 수정</li>
+        </ul>
+      </div>
+      <div class="panel"><h3>기말까지</h3>
+        <ul>
+          <li>공개 콜 원문을 더 확보해 검증 건수 확대</li>
+          <li>비GAAP 가이던스를 조정 실적과 대조</li>
+          <li>발표·시연 준비, 국내 DART 공시 확장 검토</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span>프로토타입 <a href="/">callwatch.vercel.app</a></span>
+  <span>API <a href="https://callwatch-api.onrender.com/docs">callwatch-api.onrender.com/docs</a></span>
+  <span>코드 <a href="https://github.com/haedallab/CallWatch">github.com/haedallab/CallWatch</a></span>
+  <span>공시 정보를 정리·대조하는 리서치 보조 도구이며 투자 권유가 아닙니다.</span>
+</div></footer>
+</body>
+</html>
