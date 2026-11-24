@@ -66,8 +66,8 @@ class Settings:
         "FEATURED_TICKERS", "AAPL,MSFT,NVDA,GOOGL,TSLA,SPCX,C,LLY").split(",") if t.strip()])
     warm_featured: bool = os.getenv("WARM_FEATURED", "1") == "1"
     featured_refresh_hours: float = float(os.getenv("FEATURED_REFRESH_HOURS", "20"))
-    anon_daily_analysis_limit: int = int(os.getenv("ANON_DAILY_ANALYSIS_LIMIT", "3"))
-    qa_daily_limit: int = int(os.getenv("QA_DAILY_LIMIT", "20"))
+    anon_daily_analysis_limit: int = int(os.getenv("ANON_DAILY_ANALYSIS_LIMIT", "1"))
+    qa_daily_limit: int = int(os.getenv("QA_DAILY_LIMIT", "3"))
 
     demo_mode: bool = _bool("DEMO_MODE", False)
     cache_ttl_hours: int = int(os.getenv("CACHE_TTL_HOURS", "24"))

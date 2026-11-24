@@ -35,12 +35,12 @@ def test_holdings_are_per_browser_without_signup(c):
     assert [h["ticker"] for h in c.get("/api/portfolio", headers=a).json()] == ["AAPL"]
     assert c.get("/api/portfolio", headers=b).json() == []
     me = c.get("/api/me", headers=b).json()
-    assert me["signed_in"] is False and me["uid"] == "anon-browser-bbbb-2222" and me["usage"]["limit"] == 3
+    assert me["signed_in"] is False and me["uid"] == "anon-browser-bbbb-2222" and me["usage"]["limit"] == 1
 
 
 def test_anonymous_new_ticker_limit_counts_browser_and_ip(c):
     day = time.strftime("%Y-%m-%d")
-    main.db.cache_set(f"usage:ip:testclient:{day}", 3)  # same IP already used the quota from other browsers
+    main.db.cache_set(f"usage:ip:testclient:{day}", 1)  # same IP already used the quota from another browser
     r = c.post("/api/analyze/AMZN", headers=B("fresh-browser-3333", "live"))
     assert r.status_code == 429 and "한도" in r.json()["detail"]
     main.db.cache_set(f"usage:ip:testclient:{day}", 0)
