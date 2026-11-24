@@ -187,3 +187,15 @@ def test_table_rows_naming_the_metric_are_not_segments():
     from app.services.guidance import segment_of
     assert segment_of("Earnings per share (non-GAAP) $22.50 to $24.00") is None
     assert segment_of("Earnings per Share (reported) $22.05 to $23.55") is None
+
+
+def test_microsoft_capex_guidance_is_reference_only():
+    """MSFT guides capex including finance leases; XBRL capex is cash only, so it is never scored."""
+    rev = edgar.quarterly_and_annual(nvda_facts(), "revenue")
+    cal = align.FiscalCalendar(rev["FY"], [r["end"] for r in rev["Q"]])
+    act = align.Actuals(nvda_facts())
+    item = {"ticker": "MSFT", "metric": "capex", "kind": "level", "basis": "unspecified", "low": 40e9, "high": 40e9,
+            "mid": 40e9, "unit": "USD", "period_type": "Q", "quarter": 1, "fiscal_year": 2027, "event_date": "2026-04-29",
+            "quote": "We expect CapEx spend to increase to over $40 billion as we continue to bring more capacity online."}
+    v = align.align_item(item, cal, act)
+    assert v["status"] == "unverifiable" and any("리스" in n for n in v["notes"])
