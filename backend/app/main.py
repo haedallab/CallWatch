@@ -189,6 +189,12 @@ class TranscriptIn(BaseModel):
     source_url: str | None = Field(None, max_length=500, description="원문 출처 (예: 회사 IR 페이지)")
 
 
+class TranscriptUrlIn(BaseModel):
+    ticker: str = Field(..., max_length=10)
+    call_date: date
+    url: str = Field(..., max_length=500, description="회사 IR의 콜 원문 PDF/HTML 주소")
+
+
 class CallsIn(BaseModel):
     ir_url: str | None = Field(None, max_length=500, description="회사 IR 이벤트(웹캐스트) 페이지")
     audio: dict[str, str] | None = Field(None, description="실적발표일(YYYY-MM-DD) → 녹음 파일 주소 (빈 문자열이면 삭제)")
@@ -697,6 +703,25 @@ def add_transcript(body: TranscriptIn, uid: str = Depends(require_user)):
             "hint": ("공개 원문으로 저장했습니다. 이 종목의 공용 분석을 백그라운드에서 다시 계산합니다." if body.public else
                      "재분석(refresh=true)하면 트랜스크립트 가이던스가 실적과 정렬됩니다. "
                      "올린 원문은 나에게만 보이며, 이 종목의 분석 결과도 내 전용으로 저장됩니다.")}
+
+
+@app.post("/api/transcripts/from-url", tags=["transcripts"], summary="IR 페이지의 콜 원문(PDF·HTML)을 공개 원문으로 가져오기 (운영자)")
+def transcript_from_url(body: TranscriptUrlIn, refresh: bool = True):
+    if not auth.is_verified_owner():
+        raise HTTPException(403, "운영자만 쓸 수 있습니다.")
+    try:
+        text = transcripts.fetch_text(body.url)
+    except ValueError as e:
+        _err(e, 400)
+    except httpx.HTTPError as e:
+        _err(e, 502)
+    if len(text) < 2000:
+        raise HTTPException(422, f"원문이 너무 짧습니다({len(text)}자). 주소가 원문 파일인지 확인하세요.")
+    t = body.ticker.upper()
+    tid = db.save_transcript(t, body.call_date.isoformat(), "upload", text[:500_000], transcripts.PUBLIC, body.url)
+    if refresh:
+        _refresh_shared(t)
+    return {"id": tid, "chars": len(text), "preview": text[:300]}
 
 
 def _refresh_shared(ticker: str):

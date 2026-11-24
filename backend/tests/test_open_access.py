@@ -108,3 +108,26 @@ def test_call_links_registry(c):
                      headers=B("op-0001") | {"X-Owner-Key": "op-key"}).status_code == 400
     finally:
         object.__setattr__(s, "owner_key", "")
+
+
+def test_transcript_from_url_operator_only(c, monkeypatch):
+    from app.services import transcripts as tr
+    s = main.settings
+    object.__setattr__(s, "owner_key", "op-key")
+
+    class R:
+        headers = {"content-type": "text/html"}
+        text = "<html><body><p>" + ("For the full fiscal year 2026 we expect revenue of $4.2 billion. " * 60) + "</p></body></html>"
+        content = text.encode()
+        def raise_for_status(self): pass
+
+    monkeypatch.setattr(tr.httpx, "get", lambda *a, **k: R())
+    body = {"ticker": "NBLU", "call_date": "2026-02-02", "url": "https://ir.example.com/t.html"}
+    op = B("op-0002") | {"X-Owner-Key": "op-key"}
+    try:
+        assert c.post("/api/transcripts/from-url", json=body, headers=B("visitor-8888")).status_code == 403
+        assert c.post("/api/transcripts/from-url?refresh=false", json=body | {"url": "https://127.0.0.1/x"}, headers=op).status_code == 400
+        r = c.post("/api/transcripts/from-url?refresh=false", json=body, headers=op)
+        assert r.status_code == 200 and r.json()["chars"] > 2000
+    finally:
+        object.__setattr__(s, "owner_key", "")
