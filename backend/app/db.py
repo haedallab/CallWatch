@@ -34,7 +34,8 @@ def _connect():
     if _IS_PG:
         import psycopg  # type: ignore
 
-        return psycopg.connect(settings.database_url, autocommit=True)
+        # prepare_threshold=None: safe behind Supabase's pgbouncer/supavisor poolers
+        return psycopg.connect(settings.database_url, autocommit=True, prepare_threshold=None, connect_timeout=10)
     conn = sqlite3.connect(settings.data_dir / "callwatch.db", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -47,6 +48,8 @@ _conn = None
 def cursor() -> Iterator[Any]:
     global _conn
     with _lock:
+        if _conn is not None and _IS_PG and getattr(_conn, "closed", False):
+            _conn = None  # dropped by the pooler or a restart: reconnect
         if _conn is None:
             _conn = _connect()
             cur = _conn.cursor()
@@ -63,8 +66,15 @@ def cursor() -> Iterator[Any]:
             yield cur
             if not _IS_PG:
                 _conn.commit()
+        except Exception as e:
+            if _IS_PG and e.__class__.__name__ in ("OperationalError", "InterfaceError"):
+                _conn = None  # next call opens a fresh connection
+            raise
         finally:
-            cur.close()
+            try:
+                cur.close()
+            except Exception:
+                pass
 
 
 def _q(sql: str) -> str:

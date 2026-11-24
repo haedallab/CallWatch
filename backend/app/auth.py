@@ -6,10 +6,13 @@ single-user app (uid "local"). With it, every write is scoped to the signed-in u
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import hmac
 import re
+import time
 from functools import lru_cache
 
+import httpx
 import jwt
 
 from .config import settings
@@ -29,13 +32,42 @@ def _jwks():
     return jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json", cache_keys=True)
 
 
+_remote_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _verify_remote(token: str) -> dict:
+    """Ask Supabase Auth itself (works for any signing algorithm). Cached until the token expires."""
+    h = hashlib.sha256(token.encode()).hexdigest()
+    hit = _remote_cache.get(h)
+    if hit and hit[0] > time.time():
+        return hit[1]
+    r = httpx.get(f"{settings.supabase_url}/auth/v1/user", timeout=8,
+                  headers={"apikey": settings.supabase_anon_key, "Authorization": f"Bearer {token}"})
+    r.raise_for_status()
+    u = r.json()
+    claims = {"sub": u["id"], "email": u.get("email") or ""}
+    exp = jwt.decode(token, options={"verify_signature": False}).get("exp", time.time() + 300)
+    if len(_remote_cache) > 5000:
+        _remote_cache.clear()
+    _remote_cache[h] = (min(exp, time.time() + 3600), claims)
+    return claims
+
+
 def verify(token: str) -> dict:
+    """Validate a Supabase access token.
+    HS256 (legacy shared secret) -> SUPABASE_JWT_SECRET; ES256/RS256 (signing keys) -> JWKS;
+    otherwise fall back to Supabase's /auth/v1/user endpoint."""
     try:
-        if settings.supabase_jwt_secret:
+        alg = jwt.get_unverified_header(token).get("alg", "")
+        if alg == "HS256" and settings.supabase_jwt_secret:
             claims = jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"], audience="authenticated")
-        else:
+        elif alg != "HS256" and settings.supabase_url:
             key = _jwks().get_signing_key_from_jwt(token).key
             claims = jwt.decode(token, key, algorithms=["ES256", "RS256", "EdDSA"], audience="authenticated")
+        elif settings.supabase_url and settings.supabase_anon_key:
+            claims = _verify_remote(token)
+        else:
+            raise AuthError("server cannot verify HS256 tokens: set SUPABASE_JWT_SECRET or SUPABASE_ANON_KEY")
     except Exception as e:  # expired, bad signature, unreachable JWKS ...
         raise AuthError("로그인이 만료되었거나 올바르지 않습니다. 다시 로그인해 주세요.") from e
     return {"uid": claims["sub"], "email": (claims.get("email") or "").lower()}

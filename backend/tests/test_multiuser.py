@@ -130,3 +130,26 @@ def test_save_keeps_korean_holding_as_excluded(c):
     assert {r["ticker"]: r["analyzable"] for r in rows} == {"KAIA": True, "005930": False}
     ex = c.get("/api/portfolio/summary", headers=h).json()["excluded"]
     assert [e["ticker"] for e in ex] == ["005930"]
+
+
+def test_hs256_without_secret_falls_back_to_supabase_user_endpoint(monkeypatch):
+    from app import auth
+    s = main.settings
+    object.__setattr__(s, "supabase_url", "https://x.supabase.co")
+    object.__setattr__(s, "supabase_anon_key", "anon")
+    calls = []
+
+    class R:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"id": "remote-uid", "email": "R@x.com"}
+
+    monkeypatch.setattr(auth.httpx, "get", lambda url, **kw: calls.append(url) or R())
+    try:
+        t = token("ignored", "r@x.com")
+        assert auth.verify(t) == {"uid": "remote-uid", "email": "r@x.com"}
+        auth.verify(t)
+        assert len(calls) == 1  # cached
+    finally:
+        object.__setattr__(s, "supabase_url", "")
+        object.__setattr__(s, "supabase_anon_key", "")
