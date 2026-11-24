@@ -154,3 +154,14 @@ def test_segment_guidance_is_reference_only():
     assert segment_of("Revenue is expected to be $43.0 billion, plus or minus 2%.") is None
     assert segment_of("NVIDIA's revenue is expected to be $43.0 billion") is None
     assert segment_of("Total revenue of $58.0 to $61.0 billion") is None
+
+
+def test_call_transcript_results_vs_expectations_are_not_guidance():
+    from app.services.guidance import extract_rules, segment_of
+    for s in ["M365 commercial products revenue increased 13%, significantly ahead of expectations driven by higher-than-expected sales.",
+              "Operating expenses increased 5%, lower than expected, and operating margins increased 2 points to 45%.",
+              "Roughly 40% will be recognized in revenue in the next 12 months, up 21% year-over-year."]:
+        assert extract_rules(s) == [], s
+    assert segment_of("In Azure, we expect Q3 revenue growth to be between 31% and 32%") == "Azure"
+    assert segment_of("M365 commercial cloud revenue growth should be between 14% and 15%") == "M365"
+    assert segment_of("Lilly anticipates 2026 revenue of $80 billion") is None

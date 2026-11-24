@@ -46,6 +46,17 @@ _PAST_ONLY = re.compile(
     r"contributed|totaled|totalled|generated|included|recorded|previously disclosed|compared (?:with|to)|"
     r"for the (?:quarter|year|three months|six months|nine months|twelve months|fiscal year) ended|year[- ]over[- ]year|"
     r"up \d|down \d)\b", re.I)
+# "ahead of expectations", "lower than expected": a result versus the plan, not a forecast
+_NOT_FWD = re.compile(r"\b(?:than|as|of|ahead of|below|above|in line with|exceed(?:ed|ing)?|beat|beating|versus|vs\.?)[\s-]+"
+                      r"(?:our\s+|the\s+)?(?:prior\s+)?expect(?:ed|ations?)\b|\bexpectations?\b", re.I)
+_SKIP = re.compile(r"will be recognized|remaining performance obligation|\bRPO\b|bookings|backlog|par value|"
+                   r"shares authorized|issued and outstanding|weighted[- ]average shares", re.I)
+
+
+def _fwd(s: str) -> bool:
+    return bool(_FWD.search(_NOT_FWD.sub(" ", s)))
+
+
 _TABLE_NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 
@@ -223,16 +234,27 @@ _SEG = re.compile(r"((?:[A-Z][A-Za-z&+\-]*\s+){1,3})(?=(?:segment\s+)?(?:revenue
                   r"operating margin|gross margin|margin|net interest income)\b)")
 
 
+_ALLOWED_CAPS = re.compile(r"^(?:Q[1-4]|FY\d*|H[12]|GAAP|COGS|EPS|USD|FX|CapEx|Capex|January|February|March|April|May|"
+                           r"June|July|August|September|October|November|December|I|Looking|Turning|Now|So|And|But|"
+                           r"Overall|Total|Our|We|This|That|For|In|As|On|At|To|With|Given|Next|Fiscal|Full)$")
+
+
 def segment_of(quote: str) -> str | None:
-    """'Intelligent Cloud revenue', 'Data Center revenue', 'Services segment sales' -> the segment name."""
-    for m in _SEG.finditer(quote):
-        words = [w for w in m.group(1).split() if w not in _NOT_SEGMENT and not w.isupper() or len(w) > 4]
-        words = [w for w in words if w not in _NOT_SEGMENT]
-        if words:
-            return " ".join(words)
-    if re.search(r"\bsegment\b|\bbusiness unit\b", quote, re.I):
+    """'Intelligent Cloud revenue', 'In Azure, we expect revenue growth', 'M365 commercial cloud revenue' -> segment."""
+    m = re.search(r"\b(revenues?|sales|operating income|operating margin|gross margin|margins?|net interest income)\b",
+                  quote, re.I)
+    head = quote[: m.start()] if m else quote
+    if re.search(r"\bsegment\b|\bbusiness unit\b|\bdivision\b", head, re.I):
         return "segment"
-    return None
+    toks = re.findall(r"[A-Za-z][A-Za-z0-9&+\-]*(?:'s|’s)?", head)
+    names = []
+    has_verb = re.search(r"\b(expect|anticipat|forecast|guid|project|see|believe|is|are|will|should|remain)", head, re.I)
+    for i, w in enumerate(toks):
+        if (i == 0 and has_verb and not any(ch.isdigit() for ch in w)) or w.endswith(("'s", "’s")) or _ALLOWED_CAPS.match(w) or w in _NOT_SEGMENT:
+            continue  # sentence start, possessive company name ("NVIDIA's revenue"), periods and filler
+        if w[0].isupper() or any(ch.isdigit() for ch in w):
+            names.append(w)
+    return " ".join(names[:3]) if names else None
 
 
 def _item_id(*parts) -> str:
@@ -252,17 +274,17 @@ def extract_rules(text: str, default_tf: dict | None = None) -> list[dict]:
         if since_heading > 12 and ctx_tf is not default_tf:  # a heading's period only covers the lines under it
             ctx_tf = default_tf
         if tf and not re.search(r"\d+(\.\d+)?\s*(%|percent|billion|million)|\$\d", s):
-            if _FWD.search(s) and len(s) < 160:  # e.g. "Outlook for the third quarter of fiscal 2025"
+            if _fwd(s) and len(s) < 160:  # e.g. "Outlook for the third quarter of fiscal 2025"
                 ctx_tf = {**tf, "from_heading": True}
                 since_heading = 0
             continue
-        if not _FWD.search(s) and not (ctx_tf and ctx_tf.get("from_heading")):
+        if not _fwd(s) and not (ctx_tf and ctx_tf.get("from_heading")):
             continue
-        if _PAST_ONLY.search(s) and not _FWD.search(s):
+        if _PAST_ONLY.search(s) and not _fwd(s):
+            continue
+        if _SKIP.search(s):
             continue
         if _table_row(s):  # financial-statement rows, not guidance
-            continue
-        if re.search(r"par value|shares authorized|issued and outstanding|weighted[- ]average shares", s, re.I):
             continue
         mentions = [m for m in metric_mentions(s) if not METRICS[m[2]].get("helper")]
         if not mentions:
