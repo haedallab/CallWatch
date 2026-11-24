@@ -57,7 +57,7 @@ export default function LoginDialog() {
         <ShieldCheck size={14} style={{ flex: "none", marginTop: 1 }} />
         <span>저장하는 정보는 이메일, 직접 입력한 보유 종목, 올린 어닝콜 원문뿐입니다. 계좌 비밀번호나 증권사 키는 받지 않으며, 계정 화면에서 언제든 모두 지울 수 있습니다.</span>
       </div>
-      <button className="btn ghost" onClick={a.closeLogin}>로그인 없이 데모 계속 보기</button>
+      <button className="btn ghost" onClick={a.closeLogin}>로그인 없이 계속 보기</button>
     </Modal>
   );
 }

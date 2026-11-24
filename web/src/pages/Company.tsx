@@ -65,7 +65,6 @@ function CompanyView({ ticker }: { ticker: string }) {
       )}
       <div className="ctx-sum">
         {rep.data && <span>신뢰도 <b style={{ color: rep.data.score.score == null ? C.muted : rep.data.score.score >= 80 ? C.within : rep.data.score.score >= 60 ? C.drift : C.bad }}>{rep.data.score.score ?? "–"}</b> · {rep.data.score.style.split(" (")[0]}</span>}
-        {rep.data?.mode === "demo" && <span className="tag">데모</span>}
         <button className="btn sm" disabled={running} onClick={() => app.analyze([ticker], { refresh: true })}>
           {running ? <Loader2 size={14} className="spin" /> : rep.data ? <RefreshCw size={14} /> : <Play size={14} />}{rep.data ? "다시 분석" : "분석하기"}
         </button>
@@ -98,7 +97,7 @@ function CompanyView({ ticker }: { ticker: string }) {
       <div className="page-head">
         <div>
           <h1>{r.name} <span className="muted" style={{ fontWeight: 600 }}>{r.ticker}</span></h1>
-          <p className="small">CIK {r.cik} · {r.generated_at} 분석 · 실적발표 {r.events.length}회 · 추출 엔진 {r.llm} · {r.mode === "demo" ? "데모(가상) 데이터" : "SEC EDGAR 실데이터"}</p>
+          <p className="small">CIK {r.cik} · {r.generated_at} 분석 · 실적발표 {r.events.length}회 · 추출 엔진 {r.llm} · SEC EDGAR 실데이터</p>
         </div>
       </div>
       {running && <LiveProgress ticker={ticker} compact />}

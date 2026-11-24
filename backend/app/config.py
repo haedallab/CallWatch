@@ -69,7 +69,9 @@ class Settings:
     anon_daily_analysis_limit: int = int(os.getenv("ANON_DAILY_ANALYSIS_LIMIT", "1"))
     qa_daily_limit: int = int(os.getenv("QA_DAILY_LIMIT", "3"))
 
-    demo_mode: bool = _bool("DEMO_MODE", False)
+    # Fictional demo companies are kept only for automated tests (ALLOW_DEMO=1); production serves real data only.
+    allow_demo: bool = _bool("ALLOW_DEMO", False)
+    demo_mode: bool = _bool("DEMO_MODE", False) and _bool("ALLOW_DEMO", False)
     cache_ttl_hours: int = int(os.getenv("CACHE_TTL_HOURS", "24"))
     benchmark: str = os.getenv("BENCHMARK_TICKER", "SPY")
     cors_origins: list[str] = field(

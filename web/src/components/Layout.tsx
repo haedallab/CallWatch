@@ -7,7 +7,7 @@ import { API_URL, api, ownerKey } from "../lib/api";
 import { useApp } from "../lib/store";
 import { useAuth } from "../lib/auth";
 import { C } from "../lib/format";
-import { Modal, Switch } from "./ui";
+import { Modal } from "./ui";
 import CommandPalette from "./CommandPalette";
 import JobsDock from "./JobsDock";
 import Tour from "./Tour";
@@ -77,13 +77,12 @@ function StatusDot() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
   const h = health.data;
-  const demo = h?.mode === "demo";
   const rows: [string, boolean | null | undefined][] = [
     [health.isError ? "백엔드 연결 실패" : h ? "백엔드 연결됨" : "백엔드 확인 중", health.isError ? false : h ? true : null],
-    [demo ? "데이터: 데모(가상 기업)" : `SEC EDGAR ${h?.sec_reachable ? "응답" : h?.sec_reachable === false ? "연결 실패" : "확인 중"}`, demo ? true : h?.sec_reachable],
+    [`SEC EDGAR ${h?.sec_reachable ? "응답" : h?.sec_reachable === false ? "연결 실패" : "확인 중"}`, h?.sec_reachable],
     broker.data?.available === false
       ? ["토스증권: 운영자 계정 전용 · 직접 입력 사용", true]
-      : [`토스증권 ${broker.data?.demo ? "데모 계좌" : broker.data?.connected ? "연결됨" : broker.data?.configured ? "확인 필요" : "미연결"}`, broker.data?.demo || broker.data?.connected ? true : broker.data?.configured ? null : false],
+      : [`토스증권 ${broker.data?.connected ? "연결됨" : broker.data?.configured ? "운영자 전용" : "미연결"}`, broker.data?.connected ? true : null],
     [`AI: ${h?.llm ?? "–"}`, h?.llm_enabled ? true : null],
   ];
   const worst = rows.some(([, ok]) => ok === false) ? false : rows.some(([, ok]) => ok === null) ? null : true;
@@ -106,14 +105,12 @@ function StatusDot() {
 export default function Layout() {
   const qc = useQueryClient();
   const app = useApp();
-  const auth = useAuth();
   const loc = useLocation();
   const nav = useNavigate();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 60_000, retry: 1 });
   const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyVal, setKeyVal] = useState(ownerKey.get());
-  const mode = health.data?.mode;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -127,7 +124,6 @@ export default function Layout() {
     if (health.data && !localStorage.getItem("gl.toured")) { localStorage.setItem("gl.toured", "1"); setTimeout(() => app.setTour(true), 900); }
   }, [health.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const switchMode = auth.switchMode;
 
   return (
     <div className="app">
@@ -141,7 +137,6 @@ export default function Layout() {
             <button className="tb-search" onClick={() => app.setPaletteOpen(true)} data-tour="palette" aria-label="종목·메뉴 검색 (Ctrl+K)">
               <Search size={15} /><span className="hide-m">검색</span><kbd>⌘K</kbd>
             </button>
-            <Switch checked={mode === "demo"} onChange={switchMode} label="데모" title="가상 기업 4곳의 합성 데이터로 전 기능을 체험합니다" />
             <button className="tb-icon" aria-pressed={app.masked} onClick={() => app.setMasked(!app.masked)}
               title={app.masked ? "금액 보이기" : "금액 가리기 (발표·화면 공유용)"} aria-label="금액 가리기" data-tour="privacy">
               {app.masked ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -155,20 +150,13 @@ export default function Layout() {
       </header>
 
       <main className="content" id="main">
-        {mode === "demo" && !loc.pathname.startsWith("/company") && !loc.pathname.startsWith("/present") && (
-          <div className="banner" role="note">
-            <Sparkles size={18} color={C.dark} style={{ flex: "none", marginTop: 2 }} />
-            <div>지금은 <b>가상 기업 4곳의 합성 데이터</b>로 보고 있습니다. 실제 SEC 공시로 보려면{" "}
-              <button className="linklike" onClick={() => auth.switchMode(false)}>실데이터로 돌아가기</button>.</div>
-          </div>
-        )}
         <ErrorBoundary resetKey={loc.pathname}><Outlet /></ErrorBoundary>
         <div className="foot">CallWatch는 공시 정보를 정리·대조하는 리서치 보조 도구이며 투자 권유가 아닙니다. 판정은 SEC XBRL(GAAP) 수치 기준이며,
           중요한 판단 전에는 공시 원문을 확인하세요. 토스증권 연동은 조회 전용이며 주문 기능을 쓰지 않습니다.
           {" "}<NavLink to="/account">내 데이터 관리</NavLink></div>
       </main>
 
-      {app.paletteOpen && <CommandPalette onClose={() => app.setPaletteOpen(false)} switchMode={switchMode} mode={mode} />}
+      {app.paletteOpen && <CommandPalette onClose={() => app.setPaletteOpen(false)} />}
       {app.connectOpen && <ConnectToss onClose={() => app.setConnectOpen(false)} />}
       {app.tour && <Tour onClose={() => app.setTour(false)} />}
       {app.importOpen && <ImportHoldings current={port.data || []} onClose={() => app.setImportOpen(false)} />}

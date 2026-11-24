@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ClipboardPaste, ExternalLink, Link2, Loader2, Lock, ShieldCheck } from "lucide-react";
+import { ClipboardPaste, ExternalLink, Link2, Loader2, Lock, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError, ownerKey, type Holding } from "../lib/api";
 import { useApp } from "../lib/store";
@@ -82,8 +82,7 @@ export default function ConnectToss({ onClose }: { onClose: () => void }) {
               API 키는 서버(Render) 환경변수에만 있고 브라우저로 전달되지 않습니다.</div></div>
           {status.isLoading && <Skeleton h={90} />}
           {status.isError && <ErrorState error={status.error} retry={() => status.refetch()} />}
-          {s?.demo && <div className="card row"><CheckCircle2 color="var(--within)" /><div><b>데모 계좌에 연결됨</b><div className="small muted">가상 계좌 123•••••901 · 미국 가상 기업 4종목과 국내 종목 1개</div></div></div>}
-          {s && !s.demo && !s.configured && (
+          {s && !s.configured && (
             <div className="card col">
               <b>서버에 토스증권 API 키가 아직 없습니다</b>
               <ol className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
@@ -102,7 +101,7 @@ export default function ConnectToss({ onClose }: { onClose: () => void }) {
                 <button className="btn primary" onClick={() => { ownerKey.set(key.trim()); status.refetch(); }}>확인</button></div>
             </div>
           )}
-          {s && !s.demo && s.configured && s.owner && s.connected === false && (
+          {s && s.configured && s.owner && s.connected === false && (
             <ErrorState error={new ApiError(400, s.error || "연결하지 못했습니다.", s.hint)} retry={() => status.refetch()} />
           )}
           {s?.accounts && s.accounts.length > 0 && (

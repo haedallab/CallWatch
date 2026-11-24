@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     dataMode.set(m);
     app.clearJobs();
     await qc.invalidateQueries();
-    if (!quiet) toast.success(m === "demo" ? "데모 데이터로 전환했습니다 (가상 기업)." : "실데이터(SEC 공시)로 전환했습니다.");
+    if (!quiet && m === "live") toast.success("실데이터(SEC 공시)로 전환했습니다.");
   }, [qc, app]);
 
   useEffect(() => {
@@ -51,7 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         else qc.invalidateQueries();
         toast.success(`${s?.user.email ?? "계정"}으로 로그인했습니다.`);
       } else if (event === "SIGNED_OUT") {
-        if (dataMode.get() === "live") dataMode.set("demo");
         app.clearJobs();
         qc.invalidateQueries();
       }
@@ -88,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     switchMode: async (demo: boolean) => {
       if (!demo && authEnabled && !session) {
-        openLogin("실데이터(SEC 공시) 분석과 내 보유 종목 저장은 로그인 후 쓸 수 있습니다. 데모는 로그인 없이 계속 볼 수 있습니다.", "live");
+        openLogin("로그인하면 다른 기기에서도 같은 보유 종목을 볼 수 있습니다.", "live");
         return;
       }
       await applyMode(demo ? "demo" : "live");

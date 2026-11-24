@@ -221,7 +221,7 @@ def health():
         STATE["sec_checked"] = time.time()
     return {"status": "ok", "mode": mode(), "sec_reachable": STATE["sec_ok"], "llm": settings.llm_label,
             "llm_enabled": llm.enabled(), "llm_stats": llm.STATS, "auth_enabled": settings.auth_enabled,
-            "default_mode": "demo" if settings.demo_mode else "live"}
+            "default_mode": "demo" if settings.demo_mode else "live", "demo_available": settings.allow_demo}
 
 
 @app.post("/api/mode", tags=["system"], summary="(호환용) 모드 확인 — 모드는 요청마다 X-Data-Mode 헤더로 보냅니다")

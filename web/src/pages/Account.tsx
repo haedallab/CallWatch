@@ -78,7 +78,7 @@ export default function Account() {
             </>
           ) : (
             <>
-              <p className="small muted" style={{ margin: 0 }}>지금은 로그인하지 않은 상태입니다. 데모 데이터에서 넣은 종목은 이 브라우저에만 임시로 저장됩니다.</p>
+              <p className="small muted" style={{ margin: 0 }}>지금은 로그인하지 않은 상태입니다. 넣은 종목은 이 브라우저에만 저장됩니다.</p>
               <button className="btn primary" style={{ alignSelf: "flex-start" }} onClick={() => a.openLogin(undefined, "live")}><LogIn size={16} />로그인하고 내 종목 분석하기</button>
             </>
           )}
@@ -97,7 +97,7 @@ export default function Account() {
               <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => app.setImportOpen(true)}><ClipboardPaste size={16} />보유 종목 편집</button>
             </>
           )}
-          <span className="xs muted">현재 {m?.mode === "demo" ? "데모" : "실데이터"} 모드 · 저장된 종목 {mine.length}개</span>
+          <span className="xs muted">저장된 종목 {mine.length}개</span>
         </section>
 
         <section className="card col" aria-labelledby="h-use">
@@ -106,14 +106,14 @@ export default function Account() {
             <>
               <div className="row" style={{ justifyContent: "space-between" }}><b style={{ fontSize: 22 }}>{used} / {limit}회</b><span className="small muted">자정(서버 시간)에 초기화</span></div>
               <div className="usage" role="progressbar" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used}><i style={{ width: `${Math.min(100, (used / Math.max(limit, 1)) * 100)}%` }} /></div>
-              <span className="xs muted">분석 실행(다시 분석 포함)만 차감됩니다. 다른 사용자가 이미 분석한 종목 결과를 보는 것은 무료이고, 데모 모드는 제한이 없습니다.</span>
+              <span className="xs muted">분석 실행(다시 분석 포함)만 차감됩니다. 주요 종목과 다른 사용자가 이미 분석한 종목 결과를 보는 것은 무료입니다.</span>
             </>
           )}
         </section>
 
         <section className="card col danger-zone" aria-labelledby="h-del">
           <div className="card-h"><h2 id="h-del">내 데이터 삭제</h2></div>
-          <p className="small" style={{ margin: 0 }}>보유 종목(데모·실데이터), 내가 올린 어닝콜 원문, 그 원문으로 만든 개인 분석 결과, 사용 기록을 지웁니다.
+          <p className="small" style={{ margin: 0 }}>보유 종목, 내가 올린 어닝콜 원문, 그 원문으로 만든 개인 분석 결과, 사용 기록을 지웁니다.
             {signedIn && " 서버 설정에 따라 로그인 계정도 함께 삭제됩니다."} 공시만으로 만든 공용 분석 결과는 남습니다.</p>
           <button className="btn danger" style={{ alignSelf: "flex-start" }} onClick={() => setConfirm(true)} disabled={!m?.uid}><Trash2 size={16} />내 데이터 삭제</button>
         </section>
