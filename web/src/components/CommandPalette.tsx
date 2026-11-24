@@ -12,6 +12,7 @@ export default function CommandPalette({ onClose, switchMode, mode }: { onClose:
   const app = useApp();
   const [q, setQ] = useState("");
   const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
+  const feat = useQuery({ queryKey: ["featured"], queryFn: api.featured });
   const go = (fn: () => void) => { onClose(); fn(); };
   const tickers = (port.data || []).filter((h) => h.analyzable !== false);
   const typed = q.trim().toUpperCase();
@@ -36,6 +37,15 @@ export default function CommandPalette({ onClose, switchMode, mode }: { onClose:
               ))}
             </Command.Group>
           )}
+          {feat.data && (
+            <Command.Group heading="주요 종목">
+              {feat.data.tickers.filter((t) => !tickers.some((h) => h.ticker === t)).map((t) => (
+                <Command.Item key={t} value={`featured ${t} ${feat.data.names[t] || ""}`} onSelect={() => go(() => nav(`/company/${t}`))}>
+                  <LineChart size={16} /><b>{t}</b><span className="muted small">{feat.data.names[t] || ""}</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
           <Command.Group heading="할 일">
             <Command.Item onSelect={() => go(() => app.setImportOpen(true))}><ClipboardPaste size={16} />보유 종목 붙여넣기 · 편집</Command.Item>
             <Command.Item onSelect={() => go(() => app.setConnectOpen(true))}><Link2 size={16} />토스증권 보유종목 가져오기</Command.Item>
@@ -45,7 +55,7 @@ export default function CommandPalette({ onClose, switchMode, mode }: { onClose:
             <Command.Item onSelect={() => go(() => app.setTour(true))}><Sparkles size={16} />화면 둘러보기 시작</Command.Item>
           </Command.Group>
           <Command.Group heading="메뉴">
-            {[["/", "내 포트폴리오"], ["/company", "종목 상세 분석"], ["/transcript", "어닝콜 원문 넣기"], ["/ask", "AI에게 묻기"], ["/method", "데이터·판정 방법"], ["/account", "내 계정 · 데이터 관리"]].map(([to, label]) => (
+            {[["/", "주요 종목"], ["/portfolio", "내 포트폴리오"], ["/company", "종목 상세 분석"], ["/transcript", "어닝콜 원문 넣기"], ["/ask", "AI에게 묻기"], ["/method", "데이터·판정 방법"], ["/account", "내 계정 · 데이터 관리"]].map(([to, label]) => (
               <Command.Item key={to} onSelect={() => go(() => nav(to))}><ArrowRight size={16} />{label}</Command.Item>
             ))}
           </Command.Group>

@@ -3,6 +3,7 @@ import os
 import tempfile
 
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
+os.environ.setdefault("WARM_FEATURED", "0")
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
@@ -72,13 +73,15 @@ def test_token_is_cached_and_403_gives_ip_hint(monkeypatch):
 
 def test_owner_key_gates_sync_and_hides_money():
     object.__setattr__(main.settings, "owner_key", "s3cret")
-    main.STATE["demo"] = True
     c = TestClient(main.app)
-    assert c.post("/api/broker/toss/sync", json={}).status_code == 401
-    ok = c.post("/api/broker/toss/sync", json={}, headers={"X-Owner-Key": "s3cret"})
+    live = {"X-Data-Mode": "live"}
+    assert c.post("/api/broker/toss/sync", json={}, headers=live).status_code == 403
+    demo_h = {"X-Data-Mode": "demo"}
+    ok = c.post("/api/broker/toss/sync", json={}, headers=demo_h | {"X-Owner-Key": "s3cret"})
     assert ok.status_code == 200 and ok.json()["n_analyzable"] == 4
-    public = c.get("/api/portfolio").json()
+    # callers without a browser id share the "local" portfolio: amounts hidden unless owner
+    public = c.get("/api/portfolio", headers=demo_h).json()
     assert "value_krw" not in public[0] and "weight" in public[0]
-    owner = c.get("/api/portfolio", headers={"X-Owner-Key": "s3cret"}).json()
+    owner = c.get("/api/portfolio", headers=demo_h | {"X-Owner-Key": "s3cret"}).json()
     assert owner[0]["value_krw"] > 0
     object.__setattr__(main.settings, "owner_key", "")

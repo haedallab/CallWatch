@@ -10,7 +10,7 @@ interface Ctx {
   useLlm: boolean; setUseLlm: (v: boolean) => void;
   events: number; setEvents: (v: number) => void;
   jobs: Record<string, Job>; busy: boolean;
-  analyze: (tickers: string[]) => Promise<void>;
+  analyze: (tickers: string[], opts?: { refresh?: boolean }) => Promise<void>;
   clearJobs: () => void;
   tour: boolean; setTour: (v: boolean) => void;
   paletteOpen: boolean; setPaletteOpen: (v: boolean) => void;
@@ -42,7 +42,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const patch = (t: string, p: Partial<Job>) => setJobs((j) => ({ ...j, [t]: { ...j[t], ...p } }));
 
-  const analyze = useCallback(async (tickers: string[]) => {
+  const analyze = useCallback(async (tickers: string[], opts: { refresh?: boolean } = {}) => {
     if (!tickers.length) return;
     setJobs((j) => {
       const n = { ...j };
@@ -57,9 +57,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (stop) { patch(t, { state: "error", message: stop, error: stop }); continue; }
       patch(t, { state: "running", message: "시작", pct: 0.01 });
       await new Promise<void>((resolve) => {
-        analyzeStream(t, { events, useLlm }, {
+        analyzeStream(t, { events, useLlm, refresh: opts.refresh }, {
           progress: (e) => setJobs((j) => ({ ...j, [t]: { ...j[t], pct: e.pct, message: e.message, log: [...(j[t]?.log || []), e.message].slice(-30) } })),
-          done: (d) => { ok += 1; patch(t, { state: "done", pct: 1, message: `가이던스 ${d.n_guidance}건 · ${d.elapsed_sec}초`, result: d }); qc.invalidateQueries({ queryKey: ["report", t] }); resolve(); },
+          done: (d) => { ok += 1; patch(t, { state: "done", pct: 1, message: d.cached ? `저장된 결과 · 가이던스 ${d.n_guidance}건` : `가이던스 ${d.n_guidance}건 · ${d.elapsed_sec}초`, result: d }); qc.invalidateQueries({ queryKey: ["report", t] }); resolve(); },
           error: (msg, status) => {
             patch(t, { state: "error", message: msg, error: msg });
             if (status === 401 || status === 429) stop = msg;  // same answer for the rest of the queue
@@ -70,6 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     running.current = false;
     qc.invalidateQueries({ queryKey: ["summary"] });
+    qc.invalidateQueries({ queryKey: ["featured"] });
     qc.invalidateQueries({ queryKey: ["me"] });
     if (stop) toast.error(stop);
     else if (ok === tickers.length) toast.success(`${ok}개 종목 분석을 마쳤습니다.`);

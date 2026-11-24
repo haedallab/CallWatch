@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, Copy, Send, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
+import { useTickers } from "../lib/tickers";
 import { api, type Citation, type QAResponse } from "../lib/api";
 import { Drawer, Empty, ErrorState } from "../components/ui";
 
@@ -9,8 +10,7 @@ const SUGGEST = ["다음 분기 매출 가이던스는 얼마이고 지난 분�
 interface Msg { q: string; a?: QAResponse }
 
 export default function Ask() {
-  const port = useQuery({ queryKey: ["portfolio"], queryFn: api.portfolio });
-  const opts = (port.data || []).filter((h) => h.analyzable !== false).map((h) => h.ticker);
+  const opts = useTickers().list.map((x) => x.ticker);
   const [ticker, setTicker] = useState("");
   const t = ticker || opts[0] || "";
   const rep = useQuery({ queryKey: ["report", t], queryFn: () => api.report(t), enabled: !!t, retry: false });

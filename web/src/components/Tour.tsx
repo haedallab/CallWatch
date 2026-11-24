@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const STEPS = [
-  { sel: '[data-tour="connect"]', path: "/", title: "1. 보유 종목 넣기", body: "증권사 앱이나 엑셀의 보유 종목 표를 붙여넣으면 미국 종목을 찾아 분석 목록을 만듭니다. 운영자 계정은 토스증권 오픈API(조회 전용)로 바로 가져옵니다." },
-  { sel: '[data-tour="score"]', path: "/", title: "2. 경영진 신뢰도", body: "보유 종목 경영진이 실적발표에서 한 약속을 얼마나 지켰는지 비중 가중 점수로 보여줍니다." },
-  { sel: '[data-tour="heat"]', path: "/", title: "3. 분기별 이행 지도", body: "칸을 누르면 그 분기의 가이던스와 실제 실적 비교로 바로 이동합니다." },
-  { sel: '[data-tour="privacy"]', path: "/", title: "4. 금액 가리기", body: "발표나 화면 공유 때 계좌 금액만 흐리게 가리고 비중·점수는 그대로 보여줍니다." },
+  { sel: '[data-tour="score"]', path: "/", title: "1. 경영진 신뢰도", body: "주요 종목 경영진이 실적발표에서 한 약속을 SEC 실적과 맞춰 본 점수입니다. 가입 없이 바로 볼 수 있습니다." },
+  { sel: '[data-tour="heat"]', path: "/", title: "2. 분기별 이행 지도", body: "칸을 누르면 그 분기의 가이던스와 실제 실적 비교로 바로 이동합니다." },
+  { sel: '[data-tour="connect"]', path: "/portfolio", title: "3. 내 보유 종목 넣기", body: "증권사 앱이나 엑셀의 보유 종목 표를 붙여넣으면 미국 종목을 찾아 같은 방식으로 분석합니다. 목록은 이 브라우저에만 저장됩니다." },
+  { sel: '[data-tour="privacy"]', path: "/portfolio", title: "4. 금액 가리기", body: "발표나 화면 공유 때 금액만 흐리게 가리고 비중·점수는 그대로 보여줍니다." },
   { sel: '[data-tour="palette"]', path: "/", title: "5. 어디서든 ⌘K", body: "티커를 입력해 종목으로 바로 가거나, 동기화·분석 같은 할 일을 키보드로 실행합니다." },
   { sel: '[data-tour="present"]', path: "/", title: "6. 발표 모드", body: "지금 분석 결과로 발표 슬라이드를 자동으로 만듭니다. 방향키로 넘기고, 전체 보기와 PDF 저장도 됩니다." },
 ];

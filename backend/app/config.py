@@ -56,10 +56,18 @@ class Settings:
     # Multi-user sign-in (Supabase Auth). Either the project URL (JWKS, asymmetric keys) or the legacy JWT secret.
     supabase_url: str = os.getenv("SUPABASE_URL", "").rstrip("/")
     supabase_jwt_secret: str = os.getenv("SUPABASE_JWT_SECRET", "")
+    supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
     supabase_service_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     # Accounts allowed to use the server-side Toss connection (comma separated e-mails)
     owner_emails: list[str] = field(default_factory=lambda: [e.strip().lower() for e in os.getenv("OWNER_EMAILS", "").split(",") if e.strip()])
     daily_analysis_limit: int = int(os.getenv("DAILY_ANALYSIS_LIMIT", "30"))
+    # open access: anyone can browse without signing up
+    featured: list[str] = field(default_factory=lambda: [t.strip().upper() for t in os.getenv(
+        "FEATURED_TICKERS", "AAPL,MSFT,NVDA,GOOGL,TSLA,SPCX,C,LLY").split(",") if t.strip()])
+    warm_featured: bool = os.getenv("WARM_FEATURED", "1") == "1"
+    featured_refresh_hours: float = float(os.getenv("FEATURED_REFRESH_HOURS", "20"))
+    anon_daily_analysis_limit: int = int(os.getenv("ANON_DAILY_ANALYSIS_LIMIT", "3"))
+    qa_daily_limit: int = int(os.getenv("QA_DAILY_LIMIT", "20"))
 
     demo_mode: bool = _bool("DEMO_MODE", False)
     cache_ttl_hours: int = int(os.getenv("CACHE_TTL_HOURS", "24"))

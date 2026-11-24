@@ -54,7 +54,12 @@ export interface BrokerStatus {
 export interface Health { status: string; mode: "live" | "demo"; sec_reachable: boolean | null; llm: string; llm_enabled: boolean; auth_enabled?: boolean; default_mode?: "live" | "demo" }
 export interface Me {
   auth_enabled: boolean; signed_in: boolean; user: { uid: string; email: string } | null; uid: string | null;
-  mode: "live" | "demo"; owner: boolean; toss_available: boolean; usage: { today: number; limit: number };
+  mode: "live" | "demo"; owner: boolean; toss_available: boolean; featured: string[];
+  usage: { today: number; limit: number; qa_today: number; qa_limit: number };
+}
+export interface Featured extends Summary {
+  tickers: string[]; status: Record<string, "ready" | "running" | "queued" | "failed">;
+  names: Record<string, string | null>; errors: Record<string, string>;
 }
 export interface PreviewRow { ticker: string; name?: string | null; market: "US" | "KR"; shares?: number | null; weight?: number | null; ok: boolean; analyzable: boolean; error: string | null }
 export interface Preview { rows: PreviewRow[]; skipped: { line: number | null; text: string; reason: string }[]; n_ok: number; n_analyzable: number }
@@ -116,6 +121,7 @@ export const api = {
   portfolio: () => request<Holding[]>("GET", "/api/portfolio"),
   savePortfolio: (rows: Holding[]) => request<Holding[]>("PUT", "/api/portfolio", { body: rows }),
   summary: () => request<Summary>("GET", "/api/portfolio/summary"),
+  featured: () => request<Featured>("GET", "/api/featured"),
   report: (t: string) => request<Report>("GET", `/api/report/${t}`),
   brokerStatus: () => request<BrokerStatus>("GET", "/api/broker/status"),
   brokerSync: (account_seq?: number) => request<{ holdings: Holding[] } & BrokerSync>("POST", "/api/broker/toss/sync", { body: { account_seq } }),
@@ -131,15 +137,16 @@ export const api = {
 };
 
 export interface ProgressEvent { step: string; message: string; pct: number }
-export interface DoneEvent { ticker: string; score: Score; n_guidance: number; elapsed_sec: number; warnings: string[] }
+export interface DoneEvent { ticker: string; score: Score; n_guidance: number; elapsed_sec: number; warnings: string[]; cached?: boolean }
 
 /** Run an analysis and receive step-by-step progress over Server-Sent Events.
  *  Uses fetch (not EventSource) so the sign-in token and data-mode headers travel with it. */
-export function analyzeStream(ticker: string, opts: { events?: number; useLlm?: boolean },
+export function analyzeStream(ticker: string, opts: { events?: number; useLlm?: boolean; refresh?: boolean },
   on: { progress: (e: ProgressEvent) => void; done: (e: DoneEvent) => void; error: (msg: string, status?: number) => void }) {
   const url = new URL(`${API_URL}/api/analyze/${ticker}/stream`);
   url.searchParams.set("events", String(opts.events ?? 8));
   url.searchParams.set("use_llm", String(opts.useLlm ?? true));
+  if (opts.refresh) url.searchParams.set("refresh", "true");
   const ctl = new AbortController();
   let finished = false;
   const fail = (msg: string, status?: number) => { if (!finished) { finished = true; on.error(msg, status); } };
