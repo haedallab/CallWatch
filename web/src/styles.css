@@ -321,3 +321,6 @@ mark.hl sup { font-size: 10.5px; font-weight: 700; color: var(--dark); margin-le
 .cta-mine h2 { font-size: 18px; }
 .owner-key summary { cursor: pointer; color: var(--muted); } .owner-key[open] summary { color: var(--ink); }
 .quote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--blue); background: var(--paper); border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.6; }
+.call-listen { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.icon-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 650; color: var(--dark); text-decoration: none; }
+.icon-link:hover { text-decoration: underline; }

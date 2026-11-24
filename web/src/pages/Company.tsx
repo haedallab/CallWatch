@@ -10,6 +10,7 @@ import { basisKo, C, fmt, fmtRange, fmtSurprise, shortMetric, statusView, type T
 import { Empty, ErrorState, findQuote, Highlighted, Kpi, Legend, PageSkeleton, RangeBar, Seg, Skeleton, StatusPill, type Span } from "../components/ui";
 import { CarBars, PriceChart, TrendChart } from "../components/Charts";
 import SourceDrawer from "../components/SourceDrawer";
+import { CallListen, CallsAdmin, useCalls } from "../components/CallLinks";
 
 type Tab = "ledger" | "trend" | "price" | "align";
 const TONES: { key: Tone; label: string }[] = [
@@ -232,6 +233,7 @@ function Ledger({ r }: { r: Report }) {
 
 function Detail({ g, r, onDoc, onSelect }: { g: Guidance; r: Report; onDoc: () => void; onSelect: (id: string) => void }) {
   const sv = statusView(g);
+  const calls = useCalls(r.ticker);
   const pt = g.period?.type || "Q";
   return (
     <aside className="detail card" aria-live="polite" aria-label="선택한 가이던스 근거">
@@ -249,6 +251,7 @@ function Detail({ g, r, onDoc, onSelect }: { g: Guidance; r: Report; onDoc: () =
         <div className="src" style={{ marginTop: 6 }}>{g.source} · {g.event_date} 발표 · {basisKo(g.basis)} · 추출 {g.extractor}{g.timeframe_text && ` · 기간 표현 “${g.timeframe_text}”`}</div>
       </div>
       {(g.source_url || g.transcript_id) && <button className="btn sm" style={{ alignSelf: "flex-start" }} onClick={onDoc} disabled={!g.source_url}><FileText size={14} />발표문에서 이 문장 보기</button>}
+      <CallListen calls={calls.data} date={g.event_date} />
       {g.notes.map((n) => <div key={n} className="note"><AlertTriangle size={14} style={{ flex: "none", marginTop: 2 }} />{n}</div>)}
       {g.progress && (
         <div>
@@ -309,6 +312,7 @@ function Trend({ r }: { r: Report }) {
 }
 
 function Price({ r }: { r: Report }) {
+  const calls = useCalls(r.ticker);
   if (!r.prices.length) return <Empty title="주가 데이터가 없습니다" body="가격 소스(yfinance/Stooq)에 연결하지 못했습니다. 잠시 뒤 다시 분석해 보세요." />;
   const model = r.events.find((e) => e.reaction?.model)?.reaction?.model || "–";
   const f = (v?: number | null) => (v === undefined || v === null ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(2)}%`);
@@ -323,15 +327,18 @@ function Price({ r }: { r: Report }) {
         <section className="card">
           <div className="card-h"><h2>이벤트 스터디</h2><span className="sub">{model}</span></div>
           <div className="tbl-wrap" style={{ border: 0 }}>
-            <table className="tbl"><thead><tr><th>발표일</th><th>반응일</th><th className="num">당일</th><th className="num">[-1,+1]</th><th className="num">[0,+5]</th><th className="num">[0,+20]</th></tr></thead>
+            <table className="tbl"><thead><tr><th>발표일</th><th>반응일</th><th className="num">당일</th><th className="num">[-1,+1]</th><th className="num">[0,+5]</th><th className="num">[0,+20]</th><th>콜</th></tr></thead>
               <tbody>{[...r.events].reverse().map((e) => (
                 <tr key={e.date}><td>{e.date}</td><td className="muted">{e.reaction?.reaction_date || "–"}</td>
-                  {[e.reaction?.car_0, e.reaction?.car_m1p1, e.reaction?.car_0p5, e.reaction?.car_0p20].map((v, i) => <td key={i} className="num" style={{ color: v == null ? undefined : v >= 0 ? C.good : C.bad }}>{f(v)}</td>)}</tr>
+                  {[e.reaction?.car_0, e.reaction?.car_m1p1, e.reaction?.car_0p5, e.reaction?.car_0p20].map((v, i) => <td key={i} className="num" style={{ color: v == null ? undefined : v >= 0 ? C.good : C.bad }}>{f(v)}</td>)}
+                  <td><CallListen calls={calls.data} date={e.date} compact /></td></tr>
               ))}</tbody></table>
           </div>
+          {calls.data && <p className="xs muted">콜 = 보도자료에 적힌 웹캐스트, IR = 회사 IR 페이지. {calls.data.note}</p>}
           <p className="xs muted">추정창 [-130,-11] 거래일 시장모형, 장 마감 후 발표는 다음 거래일을 반응일로 봅니다. 같은 날 다른 뉴스의 영향도 함께 담겨 있어 인과로 해석하지 않습니다.</p>
         </section>
       </div>
+      <CallsAdmin key={calls.dataUpdatedAt} ticker={r.ticker} calls={calls.data} />
     </>
   );
 }

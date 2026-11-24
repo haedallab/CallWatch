@@ -87,3 +87,24 @@ def test_operator_public_transcript_feeds_everyone_without_full_text(c):
         assert c.delete(f"/api/transcripts/{pub[0]['id']}", headers=B("visitor-6666")).status_code == 403
     finally:
         object.__setattr__(s, "owner_key", "")
+
+
+def test_call_links_registry(c):
+    s = main.settings
+    object.__setattr__(s, "owner_key", "op-key")
+    try:
+        c.post("/api/analyze/KAIA?events=4&use_llm=false&evidence=false", headers=B("visitor-7777"))
+        got = c.get("/api/calls/KAIA", headers=B("visitor-7777")).json()
+        assert got["events"]
+        d = got["events"][0]["date"]
+        assert c.put("/api/calls/KAIA", json={"audio": {d: "https://ir.example.com/a.mp3"}},
+                     headers=B("visitor-7777")).status_code == 403
+        r = c.put("/api/calls/KAIA", json={"audio": {d: "https://ir.example.com/a.mp3"}, "ir_url": "https://ir.example.com"},
+                  headers=B("op-0001") | {"X-Owner-Key": "op-key"})
+        assert r.status_code == 200
+        got = c.get("/api/calls/KAIA", headers=B("visitor-7777")).json()
+        assert got["ir_url"] == "https://ir.example.com" and got["events"][0]["audio_url"].endswith("a.mp3")
+        assert c.put("/api/calls/KAIA", json={"ir_url": "javascript:alert(1)"},
+                     headers=B("op-0001") | {"X-Owner-Key": "op-key"}).status_code == 400
+    finally:
+        object.__setattr__(s, "owner_key", "")
