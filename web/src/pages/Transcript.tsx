@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileUp, Save, Search, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTickers } from "../lib/tickers";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { useApp } from "../lib/store";
 import { basisKo, fmtRange, shortMetric } from "../lib/format";
@@ -30,11 +31,24 @@ export default function Transcript() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [text, setText] = useState("");
   const [drag, setDrag] = useState(false);
+  const auth = useAuth();
+  const operator = !!auth.me?.operator;
+  const [pub, setPub] = useState(false);
+  const [srcUrl, setSrcUrl] = useState("");
   const ex = useMutation({ mutationFn: () => api.extract(text, t || "TEMP", date, app.useLlm) });
   const saved = useQuery({ queryKey: ["tr", t, "list"], queryFn: () => api.transcripts(t), enabled: !!t });
   const save = useMutation({
-    mutationFn: () => api.saveTranscript(t, date, text),
-    onSuccess: (r) => { toast.success(`원문을 저장했습니다 · 가이던스 ${r.n_guidance}건`, { description: "이 종목을 다시 분석해 실적과 정렬합니다." }); qc.invalidateQueries({ queryKey: ["tr"] }); app.analyze([t], { refresh: true }); },
+    mutationFn: () => api.saveTranscript(t, date, text, operator && pub ? { public: true, source_url: srcUrl.trim() || undefined } : {}),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["tr"] });
+      if (r.public) {
+        toast.success(`공개 원문으로 저장했습니다 · 가이던스 ${r.n_guidance}건`, { description: "공용 분석을 서버에서 다시 계산합니다. 잠시 후 모든 방문자에게 반영됩니다." });
+        setTimeout(() => { qc.invalidateQueries({ queryKey: ["report", t] }); qc.invalidateQueries({ queryKey: ["featured"] }); }, 20_000);
+      } else {
+        toast.success(`원문을 저장했습니다 · 가이던스 ${r.n_guidance}건`, { description: "이 종목을 다시 분석해 실적과 정렬합니다." });
+        app.analyze([t], { refresh: true });
+      }
+    },
   });
   const readFile = (f?: File) => f && f.text().then((s) => { setText(s); toast.message(`${f.name}을(를) 불러왔습니다.`); });
   const items = ex.data?.items || [];
@@ -42,7 +56,7 @@ export default function Transcript() {
   return (
     <>
       <div className="page-head"><div><h1>어닝콜 원문 넣기</h1>
-        <p>보도자료에 없는 ‘말로 한 가이던스’를 잡아냅니다. 콜 트랜스크립트를 넣으면 전망 문장을 찾아 표시하고, 저장하면 SEC 실적과 함께 정렬됩니다. 올린 원문과 그 원문으로 만든 분석은 나에게만 보입니다.</p></div></div>
+        <p>보도자료에 없는 ‘말로 한 가이던스’를 잡아냅니다. 콜 트랜스크립트를 넣으면 전망 문장을 찾아 표시하고, 저장하면 SEC 실적과 함께 정렬됩니다. 올린 원문과 그 원문으로 만든 분석은 나에게만 보입니다. 주요 종목에는 운영자가 회사 IR에 공개된 콜 원문을 넣어 둡니다.</p></div></div>
       <section className="card col">
         <div className="row">
           <div className="field" style={{ width: 200 }}><label htmlFor="t">종목</label>
@@ -58,6 +72,14 @@ export default function Transcript() {
           <textarea className="input" rows={11} value={text} onChange={(e) => setText(e.target.value)} aria-label="트랜스크립트 원문"
             placeholder="영문 트랜스크립트를 붙여넣거나 .txt 파일을 여기로 끌어다 놓으세요." />
         </div>
+        {operator && (
+          <div className="banner" style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Switch checked={pub} onChange={setPub} label="공개 원문으로 저장" title="모든 방문자의 공용 분석에 반영합니다 (운영자 전용)" />
+            {pub && <input className="input" style={{ flex: 1, minWidth: 240 }} type="url" value={srcUrl} onChange={(e) => setSrcUrl(e.target.value)}
+              placeholder="출처 주소 (예: 회사 IR의 콜 원문 페이지)" aria-label="원문 출처 주소" />}
+            <span className="xs muted" style={{ flexBasis: "100%" }}>공개 원문은 방문자에게 인용 문장과 출처 링크만 보이고 전문은 보이지 않습니다.</span>
+          </div>
+        )}
         <div className="row" style={{ justifyContent: "space-between" }}>
           <Switch checked={app.useLlm} onChange={app.setUseLlm} label="AI 추출 함께 사용" title="원문에 같은 문장이 없거나 수치가 다르면 AI 결과를 버립니다" />
           <div className="row">
@@ -92,8 +114,10 @@ export default function Transcript() {
           <div className="col" style={{ gap: 8 }}>
             {saved.data?.map((r) => (
               <div key={r.id} className="row" style={{ flexWrap: "nowrap", borderBottom: "1px solid var(--line)", paddingBottom: 8 }}>
-                <div style={{ flex: 1 }}><b>{r.call_date}</b> <span className="xs muted">{r.source} · {r.chars.toLocaleString()}자</span><div className="xs muted">{r.preview.slice(0, 160)}…</div></div>
-                {r.source === "upload" && <button className="icon-btn" aria-label="삭제" onClick={async () => { await api.deleteTranscript(r.id); saved.refetch(); toast.success("삭제했습니다."); }}><Trash2 size={16} /></button>}
+                <div style={{ flex: 1 }}><b>{r.call_date}</b> {r.public && <span className="tag">공개 · 운영자</span>} <span className="xs muted">{r.source === "upload" ? "업로드" : r.source} · {r.chars.toLocaleString()}자</span>
+                  {r.source_url && <a className="xs" style={{ marginLeft: 6 }} href={r.source_url} target="_blank" rel="noreferrer">출처</a>}
+                  <div className="xs muted">{r.preview.slice(0, 160)}…</div></div>
+                {r.source === "upload" && (!r.public || operator) && <button className="icon-btn" aria-label="삭제" onClick={async () => { await api.deleteTranscript(r.id); saved.refetch(); toast.success("삭제했습니다."); }}><Trash2 size={16} /></button>}
               </div>
             ))}
           </div>

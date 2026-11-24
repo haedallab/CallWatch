@@ -204,7 +204,19 @@ def press_release(cik: str, accession: str) -> dict | None:
         return None
     url = base + pick["name"]
     text = document_text(url)
-    return {"url": url, "text": text, "outlook": outlook_section(text)}
+    # other furnished exhibits (CFO commentary, shareholder letters, presentations) often hold the outlook
+    extras = []
+    for i in htm:
+        if i is pick or not _EX99.search(i["name"]) or int(i.get("size") or 0) > 3_000_000:
+            continue
+        try:
+            t = document_text(base + i["name"])
+        except EdgarError:
+            continue
+        extras.append({"url": base + i["name"], "text": t, "outlook": outlook_section(t), "name": i["name"]})
+        if len(extras) >= 3:
+            break
+    return {"url": url, "text": text, "outlook": outlook_section(text), "extras": extras}
 
 
 _OUTLOOK_HEAD = re.compile(

@@ -41,7 +41,19 @@ _FWD = re.compile(
     r"\b(expect(?:s|ed|ing)?|anticipat(?:e|es|ed|ing)|outlook|guidance|guid(?:e|ing)|forecast(?:s|ing)?|"
     r"project(?:s|ed|ing)?|we see|target(?:ing|s)?|plan(?:s)? to|will be|should be|to be in the range|"
     r"is likely|estimate(?:s|d)?)\b", re.I)
-_PAST_ONLY = re.compile(r"\b(was|were|grew|came in|reported|delivered|achieved|ended the quarter)\b", re.I)
+_PAST_ONLY = re.compile(
+    r"\b(was|were|grew|came in|reported|delivered|achieved|ended the quarter|increased|decreased|rose|fell|declined|"
+    r"contributed|totaled|totalled|generated|included|recorded|previously disclosed|compared (?:with|to)|"
+    r"for the (?:quarter|year|three months|six months|nine months|twelve months|fiscal year) ended|year[- ]over[- ]year|"
+    r"up \d|down \d)\b", re.I)
+_TABLE_NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _table_row(s: str) -> bool:
+    """Financial-statement rows: many numbers, few words."""
+    nums = len(_TABLE_NUM.findall(s))
+    words = len(re.findall(r"[A-Za-z]{3,}", s))
+    return s.count("—") >= 2 or (nums >= 5 and words < nums * 1.5)
 
 _ORD = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
 _Q_WORD = re.compile(r"\b(first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:fiscal\s+)?quarter(?:\s+of\s+(?:fiscal\s+(?:year\s+)?)?(?:FY)?\s*'?(\d{2,4}))?", re.I)
@@ -49,7 +61,7 @@ _Q_CODE = re.compile(r"\bQ([1-4])\s*(?:FY|F)?\s*'?(\d{2,4})?\b", re.I)
 _Q_REL = re.compile(r"\b(next|coming|current|this|upcoming)\s+(?:fiscal\s+)?quarter\b", re.I)
 _FY = re.compile(
     r"\b(?:full[- ]year(?:\s+(?:of\s+)?(?:fiscal\s+)?'?(\d{4}))?|for the (?:full )?(?:fiscal )?year(?:\s+(\d{4}))?|annual|fiscal(?: year)?\s*'?(\d{2,4})|FY\s*'?(\d{2,4})|"
-    r"calendar(?: year)?\s*(\d{4})|(\d{4})\s+(?:outlook|guidance))\b", re.I)
+    r"calendar(?: year)?\s*(\d{4})|(\d{4})\s+(?:outlook|guidance)|(?:in|for|during|through) (20\d{2}))\b", re.I)
 _HALF = re.compile(r"\b(second half|first half|H1|H2|back half)\b", re.I)
 
 
@@ -213,15 +225,24 @@ def _item_id(*parts) -> str:
 def extract_rules(text: str, default_tf: dict | None = None) -> list[dict]:
     items: list[dict] = []
     ctx_tf = default_tf
+    since_heading = 0
     for start, end, s in sentences(text):
         tf = timeframe(s)
+        since_heading += 1
+        if since_heading > 12 and ctx_tf is not default_tf:  # a heading's period only covers the lines under it
+            ctx_tf = default_tf
         if tf and not re.search(r"\d+(\.\d+)?\s*(%|percent|billion|million)|\$\d", s):
-            if _FWD.search(s):  # e.g. "Outlook for the third quarter of fiscal 2025" (not "Welcome to the Q3 call")
+            if _FWD.search(s) and len(s) < 160:  # e.g. "Outlook for the third quarter of fiscal 2025"
                 ctx_tf = {**tf, "from_heading": True}
+                since_heading = 0
             continue
         if not _FWD.search(s) and not (ctx_tf and ctx_tf.get("from_heading")):
             continue
         if _PAST_ONLY.search(s) and not _FWD.search(s):
+            continue
+        if _table_row(s):  # financial-statement rows, not guidance
+            continue
+        if re.search(r"par value|shares authorized|issued and outstanding|weighted[- ]average shares", s, re.I):
             continue
         mentions = [m for m in metric_mentions(s) if not METRICS[m[2]].get("helper")]
         if not mentions:

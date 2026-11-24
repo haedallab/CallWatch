@@ -29,8 +29,12 @@ def local_transcripts(ticker: str) -> list[dict]:
     return out
 
 
+PUBLIC = "public"  # transcripts the operator published for everyone (feed the shared analyses)
+
+
 def all_transcripts(ticker: str, user_id: str | None = "local") -> list[dict]:
-    rows = db.list_transcripts(ticker, user_id) + local_transcripts(ticker)
+    mine = db.list_transcripts(ticker, user_id) if user_id and user_id != PUBLIC else []
+    rows = db.list_transcripts(ticker, PUBLIC) + mine + local_transcripts(ticker)
     return sorted(rows, key=lambda r: r["call_date"])
 
 

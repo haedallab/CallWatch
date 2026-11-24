@@ -373,6 +373,13 @@ function Align({ r }: { r: Report }) {
           <div className="card-h" style={{ margin: 0 }}><h2>발표 원문</h2><span className="sub">강조 문장을 누르면 오른쪽 판정으로 이동</span></div>
           {(docQ.isLoading || trQ.isLoading) && <div className="col">{[0, 1, 2, 3].map((i) => <Skeleton key={i} h={18} />)}</div>}
           {docQ.isError && <ErrorState error={docQ.error} retry={() => docQ.refetch()} />}
+          {!text && !docQ.isLoading && !trQ.isLoading && first?.transcript_id && (
+            <div className="col" style={{ gap: 10 }}>
+              <p className="small muted" style={{ margin: 0 }}>회사가 공개한 어닝콜 원문에서 찾은 문장입니다. 전문은 출처에서 확인하세요.</p>
+              {items.map((g) => <blockquote key={g.id} className="quote">“{g.quote}”</blockquote>)}
+              {first.transcript_url && <a className="small" href={first.transcript_url} target="_blank" rel="noreferrer">어닝콜 원문 출처 열기</a>}
+            </div>
+          )}
           {text && <div className="doc" ref={docRef}><Highlighted text={shown} spans={spans.filter((s) => s.start >= win).map((s) => ({ ...s, start: s.start - win, end: s.end - win }))} active={active} onPick={pick} /></div>}
         </section>
         <section className="col">

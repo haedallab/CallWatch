@@ -20,9 +20,9 @@ services:
       - key: FEATURED_TICKERS        # public front page, analysed by the server and refreshed daily
         value: AAPL,MSFT,NVDA,GOOGL,TSLA,SPCX,C,LLY
       - key: ANON_DAILY_ANALYSIS_LIMIT   # new (non-featured) tickers per browser/IP per day
-        value: "3"
+        value: "1"
       - key: QA_DAILY_LIMIT          # AI questions per browser per day
-        value: "20"
+        value: "3"
       - key: OWNER_KEY               # operator key: unlocks Toss sync and lifts limits
         generateValue: true
       - key: TOSS_CLIENT_ID          # Toss Securities Open API, operator's own account (read-only)

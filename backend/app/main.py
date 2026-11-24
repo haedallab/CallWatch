@@ -184,6 +184,8 @@ class TranscriptIn(BaseModel):
     ticker: str = Field(..., max_length=10)
     call_date: date
     text: str = Field(..., min_length=200, max_length=500_000)
+    public: bool = Field(False, description="운영자 전용: 모든 방문자의 공용 분석에 반영 (회사 IR에 공개된 원문)")
+    source_url: str | None = Field(None, max_length=500, description="원문 출처 (예: 회사 IR 페이지)")
 
 
 class QAIn(BaseModel):
@@ -224,7 +226,7 @@ def me():
     uid = auth.uid()
     today = date.today().isoformat()
     return {"auth_enabled": settings.auth_enabled, "signed_in": bool(u),
-            "user": u, "uid": uid, "mode": mode(), "owner": auth.is_owner(),
+            "user": u, "uid": uid, "mode": mode(), "owner": auth.is_owner(), "operator": auth.is_verified_owner(),
             "toss_available": is_demo() or (auth.is_owner() and toss.configured()),
             "featured": _featured(),
             "usage": {"today": db.count_usage(uid, today) if uid else 0, "limit": _limit(),
@@ -674,24 +676,66 @@ def add_transcript(body: TranscriptIn, uid: str = Depends(require_user)):
         source().resolve(body.ticker)
     except edgar.EdgarError as e:
         _err(e, 404)
-    tid = db.save_transcript(body.ticker, body.call_date.isoformat(), "upload", body.text, uid)
+    if body.public and not auth.is_verified_owner():
+        raise HTTPException(403, "공개 원문은 운영자만 올릴 수 있습니다.")
+    if body.source_url and not body.source_url.startswith("https://"):
+        raise HTTPException(400, "출처는 https:// 주소여야 합니다.")
+    owner_id = transcripts.PUBLIC if body.public else uid
+    tid = db.save_transcript(body.ticker, body.call_date.isoformat(), "upload", body.text, owner_id, body.source_url or "")
     items = guidance.extract(body.text, ticker=body.ticker, event_date=body.call_date.isoformat(),
                              source="어닝콜 트랜스크립트", use_llm=True)
-    return {"id": tid, "n_guidance": len(items), "items": items,
-            "hint": "재분석(refresh=true)하면 트랜스크립트 가이던스가 실적과 정렬됩니다. "
-                    "올린 원문은 나에게만 보이며, 이 종목의 분석 결과도 내 전용으로 저장됩니다."}
+    if body.public:
+        _refresh_shared(body.ticker.upper())
+    return {"id": tid, "n_guidance": len(items), "items": items, "public": body.public,
+            "hint": ("공개 원문으로 저장했습니다. 이 종목의 공용 분석을 백그라운드에서 다시 계산합니다." if body.public else
+                     "재분석(refresh=true)하면 트랜스크립트 가이던스가 실적과 정렬됩니다. "
+                     "올린 원문은 나에게만 보이며, 이 종목의 분석 결과도 내 전용으로 저장됩니다.")}
+
+
+def _refresh_shared(ticker: str):
+    """Recompute the shared report after the operator adds a public transcript."""
+    key, demo_mode, use_llm = f"{mode()}:{ticker}", is_demo(), llm.enabled()
+
+    def work():
+        if key.upper() in RUNNING:
+            return
+        RUNNING[key.upper()] = time.time()
+        try:
+            rep = analyze(ticker, n_events=8, use_llm=use_llm, src=source(demo_mode), store_key=key)
+            rep["n_events_requested"] = 8
+            db.save_report(key, rep)
+        except Exception as e:
+            log.warning("shared refresh %s failed: %s", ticker, e)
+        finally:
+            RUNNING.pop(key.upper(), None)
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 @app.get("/api/transcripts/{ticker}", tags=["transcripts"], summary="트랜스크립트 목록 (공용 샘플 + 내가 올린 원문)")
 def list_transcripts(ticker: str, include_text: bool = False):
     uid = auth.uid()
     rows = demo.DemoSource.transcripts(ticker, uid) if is_demo() else transcripts.all_transcripts(ticker, uid)
-    return [{**{k: r[k] for k in ("id", "ticker", "call_date", "source")}, "chars": len(r["text"]),
-             "preview": r["text"][:300]} | ({"text": r["text"]} if include_text else {}) for r in rows]
+    out = []
+    for r in rows:
+        public = r.get("user_id") == transcripts.PUBLIC
+        row = {**{k: r[k] for k in ("id", "ticker", "call_date", "source")}, "chars": len(r["text"]),
+               "preview": r["text"][:300], "public": public, "source_url": r.get("source_url") or ""}
+        # operator-published transcripts belong to the company: visitors get quotes and the link, not the full text
+        if include_text and (not public or auth.is_verified_owner()):
+            row["text"] = r["text"]
+        out.append(row)
+    return out
 
 
 @app.delete("/api/transcripts/{tid}", tags=["transcripts"], summary="내가 올린 트랜스크립트 삭제")
 def delete_transcript(tid: str, uid: str = Depends(require_user)):
+    if tid.startswith(transcripts.PUBLIC + ":"):
+        if not auth.is_verified_owner():
+            raise HTTPException(403, "공개 원문은 운영자만 지울 수 있습니다.")
+        db.delete_transcript(tid, transcripts.PUBLIC)
+        _refresh_shared(tid.split(":")[1])
+        return {"deleted": tid}
     db.delete_transcript(tid, uid)
     return {"deleted": tid}
 
